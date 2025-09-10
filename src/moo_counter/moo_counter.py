@@ -1,11 +1,38 @@
+#!/usr/bin/env python
+# /// script
+# requires-python = ">=3.12"
+# dependencies = [
+#   "httpx",
+#   "beautifulsoup4",
+# ]
+# ///
 # Standard Library
 import argparse
 import itertools
+import json
 import pathlib
 import random
 import sys
 import time
 from multiprocessing import Pool
+
+import httpx
+from bs4 import BeautifulSoup
+
+
+def grid_from_live() -> list[list[str]]:
+    """Generate the grid from the live puzzle input."""
+    url = "https://find-a-moo.kleeut.com/plain-text"
+    
+    response = httpx.get(url)
+    response.raise_for_status()
+    text = response.text
+
+    soup = BeautifulSoup(text, "html.parser")
+    content = soup.select("body > pre")[0].get_text()
+
+    grid = [list(line.replace(" ", "")) for line in content.splitlines()]
+    return grid
 
 
 def grid_from_file(path: pathlib.Path) -> list[list[str]]:
@@ -196,10 +223,11 @@ def render_moo_count_histogram(all_moo_counts: list[int]) -> None:
         print(
             f"Moo count {key}: {int((moo_count_histogram[key] / max_stars) * screen_width) * '🐮'} {moo_count_histogram[key]}"
         )
+    output_filename = pathlib.Path("moo_count_histogram.json")
+    output_filename.write_text(json.dumps(moo_count_histogram))
 
 
-def main(puzzle_path: pathlib.Path, iterations: int) -> None:
-    grid = grid_from_file(puzzle_path)
+def main(grid: list[list[str]], iterations: int) -> None:
     all_valid_mooves = generate_all_valid_mooves(grid)
     print(f"Total valid 'moo' moves found: {len(all_valid_mooves)}")
     # The total permuations is 172! for today's grid which has like >300 zeroes in the count of permutations.
@@ -234,7 +262,6 @@ def main(puzzle_path: pathlib.Path, iterations: int) -> None:
     time_parallel_end = time.time()
     time_parallel_duration = time_parallel_end - time_sims_start
     print(f"Simulations complete took {time_parallel_duration:.2f}s, processing results...")
-
     
     all_moo_counts = [count for _, count in all_results]
     max_result = max(all_results, key=lambda x: x[1])  # x[1] is moo_count
@@ -262,8 +289,10 @@ def main(puzzle_path: pathlib.Path, iterations: int) -> None:
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Moo Counter")
-    parser.add_argument("--puzzle", type=pathlib.Path, help="Path to the puzzle file")
+    parser.add_argument("--puzzle", type=str, help="Path to the puzzle file")
     parser.add_argument("--iterations", type=int, default=3000000, help="Number of iterations for random sampling")
     args = parser.parse_args(sys.argv[1:])
 
-    main(args.puzzle, args.iterations)
+    grid = grid_from_live() if args.puzzle == 'live' else grid_from_file(pathlib.Path(args.puzzle))
+        
+    main(grid, args.iterations)
