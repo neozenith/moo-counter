@@ -224,7 +224,9 @@ def render_moo_count_histogram(all_moo_counts: list[int]) -> None:
             f"Moo count {key}: {int((moo_count_histogram[key] / max_stars) * screen_width) * '🐮'} {moo_count_histogram[key]}"
         )
     output_filename = pathlib.Path("moo_count_histogram.json")
-    output_filename.write_text(json.dumps(moo_count_histogram))
+    # sort the dictionary by keys for easier reading
+    moo_count_histogram = {k: moo_count_histogram[k] for k in sorted(moo_count_histogram.keys())}
+    output_filename.write_text(json.dumps(moo_count_histogram, indent=2))
 
 
 def main(grid: list[list[str]], iterations: int) -> None:
