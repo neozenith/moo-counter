@@ -19,7 +19,7 @@ jobs:
         run: uv sync
 
       - name: Run Moo Counter Simulation
-        run: uv run moo_counter --puzzle live --iterations 10000
+        run: uv run src/moo_counter/moo_counter.py --puzzle live --iterations 10000
 
       - uses: actions/upload-artifact@v4
         with:
