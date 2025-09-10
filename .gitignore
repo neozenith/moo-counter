@@ -1,0 +1,7 @@
+# Standard python gitignore
+__pycache__/
+*.py[cod]
+*$py.class
+
+.*_cache/
+.claude/
