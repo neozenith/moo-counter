@@ -1,6 +1,6 @@
 # Moo Counter 🐮
 
-Simulation counter of possible moos achievable in https://find-a-moo.kleeut.com/
+Simulation counter of possible moos achievable in <https://find-a-moo.kleeut.com/>
 
 I wanted to simulate for a given puzzle:
 - What is the theoretical maximum?
@@ -23,7 +23,7 @@ options:
 Eg:
 
 ```sh
-uv run moo_counter.py --puzzle 20250910-puzzle.moo --iterations 3000000
+uv run src/moo_counter/moo_counter.py --puzzle 20250910-puzzle.moo
 ```
 
 Example output:

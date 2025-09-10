@@ -1,33 +1,23 @@
+# Standard Library
+import argparse
 import itertools
 import pathlib
 import random
-import time
 import sys
-import argparse
+import time
+from multiprocessing import Pool
 
-
-directions = [
-    (-1, 0),   # up
-    (-1, 1),   # up-right
-    (0, 1),    # right
-    (1, 1),    # down-right
-    (1, 0),    # down
-    (1, -1),   # down-left
-    (0, -1),   # left
-    (-1, -1)   # up-left
-]
 
 def grid_from_file(path: pathlib.Path) -> list[list[str]]:
-    with open(path, 'r') as f:
+    with open(path, "r") as f:
         lines = f.readlines()
-    
+
     grid = []
     for line in lines:
         row = list(line.strip())
         grid.append(row)
-    
-    return grid
 
+    return grid
 
 
 def is_valid_moove(m: tuple[tuple[int, int], tuple[int, int], tuple[int, int]], grid: list[list[str]]) -> bool:
@@ -66,18 +56,18 @@ def is_valid_moove(m: tuple[tuple[int, int], tuple[int, int], tuple[int, int]], 
 
     # Check if it spells 'moo'
     # Check if t1 is 'm' and t2, t3 are 'o's
-    if grid[r1][c1] != 'm' or grid[r2][c2] != 'o' or grid[r3][c3] != 'o':
+    if grid[r1][c1] != "m" or grid[r2][c2] != "o" or grid[r3][c3] != "o":
         return False
-    
+
     # Check if t2 is adjacent to t1
     if abs(dr1) > 1 or abs(dc1) > 1:
         return False
-    
+
     # Check if t3 follows the same direction from t2
     # They should have the same vector (dr1, dc1) == (dr2, dc2)
     if dr1 != dr2 or dc1 != dc2:
         return False
-    
+
     return True
 
 
@@ -87,6 +77,16 @@ def generate_moove(start: tuple[int, int], direction: int) -> tuple[tuple[int, i
     - start is the position of 'm' (t1).
     - direction is an integer from 0 to 7 representing the 8 possible directions clockwise
     """
+    directions = [
+        (-1, 0),  # up
+        (-1, 1),  # up-right
+        (0, 1),  # right
+        (1, 1),  # down-right
+        (1, 0),  # down
+        (1, -1),  # down-left
+        (0, -1),  # left
+        (-1, -1),  # up-left
+    ]
     r1, c1 = start
     dr, dc = directions[direction]
 
@@ -95,6 +95,7 @@ def generate_moove(start: tuple[int, int], direction: int) -> tuple[tuple[int, i
     t3 = (r1 + 2 * dr, c1 + 2 * dc)
 
     return (t1, t2, t3)
+
 
 def generate_all_valid_mooves(grid: list[list[str]]) -> list[tuple[tuple[int, int], tuple[int, int], tuple[int, int]]]:
     """Generate all possible 'moo' moves on the grid."""
@@ -107,15 +108,22 @@ def generate_all_valid_mooves(grid: list[list[str]]) -> list[tuple[tuple[int, in
                     mooves.append(moove)
     return mooves
 
-def generate_all_permutations_of_moove_sequences(mooves: list[tuple[tuple[int, int], tuple[int, int], tuple[int, int]]], length: int):
+
+def generate_all_permutations_of_moove_sequences(
+    mooves: list[tuple[tuple[int, int], tuple[int, int], tuple[int, int]]], length: int
+):
     """Generate all possible permutations of moove sequences of a given length."""
     return itertools.permutations(mooves, length)
+
 
 def generate_empty_board() -> list[list[bool]]:
     """Generate an empty 15x15 board of False values."""
     return [[False for _ in range(15)] for _ in range(15)]
 
-def update_board_with_moove(board: list[list[bool]], moo_count: int, moove: tuple[tuple[int, int], tuple[int, int], tuple[int, int]]) -> tuple[list[list[bool]], int]:
+
+def update_board_with_moove(
+    board: list[list[bool]], moo_count: int, moove: tuple[tuple[int, int], tuple[int, int], tuple[int, int]]
+) -> tuple[list[list[bool]], int]:
     """Update the board with a 'moo' move."""
     t1, t2, t3 = moove
     r1, c1 = t1
@@ -136,19 +144,23 @@ def update_board_with_moove(board: list[list[bool]], moo_count: int, moove: tupl
 
     return board, moo_count
 
+
 def render_board(board: list[list[bool]], grid: list[list[str]]) -> None:
     for r, row in enumerate(board):
-        row_str = ''
+        row_str = ""
         for c, cell in enumerate(row):
             if cell is True:
-                row_str += grid[r][c].upper() + ' '
+                row_str += grid[r][c].upper() + " "
             elif cell is False:
-                row_str += grid[r][c].lower() + ' '
+                row_str += grid[r][c].lower() + " "
             else:
-                row_str += f'{cell} '
+                row_str += f"{cell} "
         print(row_str)
 
-def simulate_board(mooves: list[tuple[tuple[int, int], tuple[int, int], tuple[int, int]]]) -> tuple[list[list[bool]], int]:
+
+def simulate_board(
+    mooves: list[tuple[tuple[int, int], tuple[int, int], tuple[int, int]]],
+) -> tuple[list[list[bool]], int]:
     """Simulate the board with a sequence of 'moo' moves."""
     board = generate_empty_board()
     moo_count = 0
@@ -158,9 +170,18 @@ def simulate_board(mooves: list[tuple[tuple[int, int], tuple[int, int], tuple[in
 
     return board, moo_count
 
-def render_moo_count_histogram(all_moo_counts: dict) -> None:
+
+def worker_simulate(args: tuple[int, list]) -> tuple[list[list[bool]], int]:
+    """Worker function that generates and simulates a random permutation."""
+    seed, all_valid_mooves = args
+    random.seed(seed)  # Ensure different random sequence per worker
+    shuffled = random.sample(all_valid_mooves, len(all_valid_mooves)) # Offload the shuffle to the worker.
+    return simulate_board(shuffled)
+
+
+def render_moo_count_histogram(all_moo_counts: list[int]) -> None:
     moo_count_histogram = {}
-    for count in all_moo_counts.values():
+    for count in all_moo_counts:
         if count in moo_count_histogram.keys():
             moo_count_histogram[count] += 1
         else:
@@ -172,7 +193,10 @@ def render_moo_count_histogram(all_moo_counts: dict) -> None:
 
     sorted_moo_count_histogram_keys = sorted(moo_count_histogram.keys())
     for key in sorted_moo_count_histogram_keys:
-        print(f"Moo count {key}: {int((moo_count_histogram[key] / max_stars) * screen_width) * '🐮'} {moo_count_histogram[key]}")
+        print(
+            f"Moo count {key}: {int((moo_count_histogram[key] / max_stars) * screen_width) * '🐮'} {moo_count_histogram[key]}"
+        )
+
 
 def main(puzzle_path: pathlib.Path, iterations: int) -> None:
     grid = grid_from_file(puzzle_path)
@@ -184,7 +208,7 @@ def main(puzzle_path: pathlib.Path, iterations: int) -> None:
     # We will track the maximum moo count found and how long it took to find each new maximum to find a point of diminishing returns.
     # We will also keep a track of past trials to prevent re-trying the same permutation.
 
-    all_moo_counts = {} # key: hash of moove sequence, value: moo count
+    all_moo_counts = []
 
     # Time tracking to see diminishing returns for simulation.
     time_start = time.time()
@@ -193,39 +217,48 @@ def main(puzzle_path: pathlib.Path, iterations: int) -> None:
     max_mooves = 0
     max_board = None
     N_iters = iterations
-    for i in range(N_iters):
 
-        if (i+1) % 1000 == 0 or i == 0:
-            print(f"Iteration {i+1}/{N_iters}")
+    # Create args for workers (seed + mooves list for each iteration)
+    worker_args = [(i, all_valid_mooves) for i in range(N_iters)]
 
-        mooves = random.sample(all_valid_mooves, len(all_valid_mooves))
-        hash_of_mooves = hash(tuple(mooves))
-        if hash_of_mooves in all_moo_counts.keys():
-            print("This set of mooves has already been tried. Skipping.")
-            continue
+    time_sims_start = time.time()
+    # Multiprocessing with proper chunksize
+    optimal_chunksize = max(1, N_iters // (Pool()._processes * 4))
+    print(f"Using {Pool()._processes} processes with chunksize {optimal_chunksize}")
 
-        current_board, current_moo_count = simulate_board(mooves)
+    with Pool() as pool:
+        results_iter = pool.imap_unordered(worker_simulate, worker_args, chunksize=optimal_chunksize)
 
-        all_moo_counts[hash_of_mooves] = current_moo_count
+        all_results = list(results_iter)
+        
+    time_parallel_end = time.time()
+    time_parallel_duration = time_parallel_end - time_sims_start
+    print(f"Simulations complete took {time_parallel_duration:.2f}s, processing results...")
 
-        if current_moo_count > max_mooves:
-            max_mooves = current_moo_count
-            max_board = current_board
-            time_now = time.time()
-            last_record = new_max_timestamps[-1] 
-            cumulative_time = time_now - time_start
-            time_since_last = time_now - last_record[0]
-            new_max_time_record = (time_now, cumulative_time, max_mooves)
-            new_max_timestamps.append(new_max_time_record)
-            print(f"New maximum moo count found: {max_mooves} (previously {last_record[2]}) after {cumulative_time:.2f}s ( +{time_since_last:.2f}s )")
     
+    all_moo_counts = [count for _, count in all_results]
+    max_result = max(all_results, key=lambda x: x[1])  # x[1] is moo_count
+    max_board, max_mooves = max_result
+
+    time_reduce_end = time.time()
+    time_reduce_duration = time_reduce_end - time_parallel_end
+    print(
+        f"Result processing took {time_reduce_duration:.2f}s after {time_parallel_duration:.2f}s of parallel simulation."
+    )
+
     time_now = time.time()
     total_time = time_now - time_start
+    total_sims_time = time_now - time_sims_start
+
     render_moo_count_histogram(all_moo_counts)
+    render_board(max_board, grid)
+
     print(f"Total valid 'moo' moves found: {len(all_valid_mooves)}")
     print(f"Theoretical maximum moo count: {max_mooves} after {N_iters} iterations")
+    print(f"Time taken for parallel simulation: {total_sims_time:.2f}s")
     print(f"Total time taken: {total_time:.2f}s")
-    render_board(max_board, grid)
+    print(f"Simulations per second: {N_iters / total_sims_time:.0f}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Moo Counter")
