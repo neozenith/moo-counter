@@ -30,6 +30,7 @@ OUTPUT_MIN_MOO_SEQUENCE = OUTPUT_DIR / "min_moo_sequence.yml"
 
 # Custom Types
 Grid = list[list[str]]
+GridDimensions = tuple[int, int]  # (rows, columns)
 BoardState = list[list[bool]] # This is the current board coverage state, True if occupied, False if not.
 
 Position = tuple[int, int]  # (row, column)
@@ -47,6 +48,8 @@ MooveCoverageGainSequence = list[int]  # Sequence of coverage gains after each m
 SimulationResult = tuple[BoardState, MooCount, MooveSequence, MooveCountSequence, MooveCoverageGainSequence]
 MooCountHistogram = dict[str, int]  # Histogram of moo counts from multiple simulations
 
+MooveOverlapGraph = dict[Moove, set[Moove]]  # Graph of mooves that have a relationship to another moove because they overlap
+
 def grid_from_live() -> Grid:
     """Generate the grid from the live puzzle input."""
     url = "https://find-a-moo.kleeut.com/plain-text"
@@ -54,6 +57,7 @@ def grid_from_live() -> Grid:
     response = httpx.get(url)
     response.raise_for_status()
     text = response.text
+    # TODO: let it finish rendering the javascript before scraping.
 
     soup = BeautifulSoup(text, "html.parser")
     content = soup.select("body > pre")[0].get_text()
@@ -62,7 +66,7 @@ def grid_from_live() -> Grid:
     return grid
 
 
-def grid_from_file(path: pathlib.Path) -> list[list[str]]:
+def grid_from_file(path: pathlib.Path) -> Grid:
     with open(path, "r") as f:
         lines = f.readlines()
 
@@ -73,6 +77,10 @@ def grid_from_file(path: pathlib.Path) -> list[list[str]]:
 
     return grid
 
+def grid_dimensions(grid: Grid) -> GridDimensions:
+    rows = len(grid)
+    cols = len(grid[0]) if rows > 0 else 0
+    return (rows, cols)
 
 def is_valid_moove(m: Moove, grid: Grid) -> bool:
     """Check if three positions form a valid 'moo' move.
@@ -83,7 +91,7 @@ def is_valid_moove(m: Moove, grid: Grid) -> bool:
     - t2 must be adjacent to t1 (horizontally or vertically or diagonally)
     - t3 must follow the same direction as t2 from t1.
     """
-
+    height, width = grid_dimensions(grid)
     # Unpack rows and columns
     t1, t2, t3 = m
     r1, c1 = t1
@@ -91,11 +99,11 @@ def is_valid_moove(m: Moove, grid: Grid) -> bool:
     r3, c3 = t3
 
     # Check if positions are within bounds
-    if r1 < 0 or r1 >= 15 or c1 < 0 or c1 >= 15:
+    if r1 < 0 or r1 >= height or c1 < 0 or c1 >= width:
         return False
-    if r2 < 0 or r2 >= 15 or c2 < 0 or c2 >= 15:
+    if r2 < 0 or r2 >= height or c2 < 0 or c2 >= width:
         return False
-    if r3 < 0 or r3 >= 15 or c3 < 0 or c3 >= 15:
+    if r3 < 0 or r3 >= height or c3 < 0 or c3 >= width:
         return False
 
     # Calculate direction from t1 to t2
@@ -148,26 +156,35 @@ def generate_moove(start: Position, direction: Direction) -> Moove:
 
 def generate_all_valid_mooves(grid: Grid) -> MooveSequence:
     """Generate all possible 'moo' moves on the grid."""
+    height, width = grid_dimensions(grid)
     mooves: MooveSequence = []
-    for r in range(15):
-        for c in range(15):
+    for r in range(height):
+        for c in range(width):
             for direction in range(8):
                 moove: Moove = generate_moove((r, c), direction)
                 if is_valid_moove(moove, grid):
                     mooves.append(moove)
     return mooves
 
+def generate_overlaps_graph(mooves: MooveSequence) -> dict[Moove, set[Moove]]:
+    overlaps: dict[Moove, set[Moove]] = {}
+    for i, moove1 in enumerate(mooves):
+        for moove2 in mooves[i + 1:]:
+            if do_mooves_overlap(moove1, moove2):
+                overlaps.setdefault(moove1, set()).add(moove2)
+                overlaps.setdefault(moove2, set()).add(moove1)
+    return overlaps
 
-def generate_all_permutations_of_moove_sequences(
-    mooves: MooveSequence, length: int
-):
-    """Generate all possible permutations of moove sequences of a given length."""
-    return itertools.permutations(mooves, length)
+def do_mooves_overlap(m1: Moove, m2: Moove) -> bool:
+    positions1 = set(m1)
+    positions2 = set(m2)
+    return not positions1.isdisjoint(positions2)
 
 
-def generate_empty_board() -> BoardState:
-    """Generate an empty 15x15 board of False values."""
-    return [[False for _ in range(15)] for _ in range(15)]
+def generate_empty_board(dims: GridDimensions) -> BoardState:
+    """Generate an empty board of False values."""
+    height, width = dims
+    return [[False for _ in range(width)] for _ in range(height)]
 
 
 def update_board_with_moove(
@@ -242,9 +259,10 @@ def render_direction_arrow(direction: Direction) -> str:
 
 def simulate_board(
     mooves: MooveSequence,
+    dims: GridDimensions = (15, 15)
 ) -> SimulationResult:
     """Simulate the board with a sequence of 'moo' moves."""
-    board = generate_empty_board()
+    board = generate_empty_board(dims)
     moo_count = 0
     moo_count_sequence = []
     moo_coverage_gain_sequence = []
@@ -256,7 +274,7 @@ def simulate_board(
     return board, moo_count, mooves, moo_count_sequence, moo_coverage_gain_sequence
 
 def generate_sequence_from_strategy(
-    strategy: str, all_valid_mooves: MooveSequence, random_seed: int = 42
+    strategy: str, all_valid_mooves: MooveSequence, dims: GridDimensions, graph: MooveOverlapGraph, random_seed: int = 42
 ) -> MooveSequence:
     """Generate a sequence of mooves based on the given strategy."""
     random.seed(random_seed)
@@ -266,19 +284,21 @@ def generate_sequence_from_strategy(
     if strategy == 'random':
         return random.sample(all_valid_mooves, len(all_valid_mooves))
     elif strategy == 'greedy-high':
-        return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, seed=random_seed, highest_score=True)
+        return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=True)
     elif strategy == 'greedy-low':
-        return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, seed=random_seed, highest_score=False)
+        return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=False)
     elif strategy == 'greedy':
-        return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, seed=random_seed, highest_score=random.choice([True, False]))
+        return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
+    elif strategy == 'beam-search':
+        return generate_sequence_beam_search(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
 
-def worker_simulate(args: tuple[int, MooveSequence, str]) -> SimulationResult:
+def worker_simulate(args: tuple[int, MooveSequence, GridDimensions, MooveOverlapGraph, str]) -> SimulationResult:
     """Worker function that generates and simulates a random permutation."""
-    seed, all_valid_mooves, strategy = args
-    sequence = generate_sequence_from_strategy(strategy, all_valid_mooves=all_valid_mooves, random_seed=seed)
-    return simulate_board(sequence)
+    seed, all_valid_mooves, dims, graph, strategy = args
+    sequence = generate_sequence_from_strategy(strategy, all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, random_seed=seed)
+    return simulate_board(sequence, dims)
  # Offload the shuffle to the worker.
 
 def render_moo_count_histogram(all_moo_counts: MooveCountSequence) -> MooCountHistogram:
@@ -303,22 +323,31 @@ def render_moo_count_histogram(all_moo_counts: MooveCountSequence) -> MooCountHi
     moo_count_histogram = {k: moo_count_histogram[k] for k in sorted(moo_count_histogram.keys())}
     return moo_count_histogram
 
+def render_moove(moove: Moove) -> str:
+    """Render a single moove in the format 'A, 1 →' or 'H,12 ↖'."""
+    t1, t2, t3 = moove
+    return f"'{chr(t1[0] + 65)},{t1[1]+1:>2} {render_direction_arrow(determine_direction_from_moove(moove))}'"
+
 def render_moove_sequence(
         moove_sequence: MooveSequence, 
         moo_count_sequence: MooveCountSequence, 
         moo_coverage_sequence: MooveCoverageGainSequence
     ) -> str:
     accumulative_coverage = 0
-    output = "mooves:\n"
+    output = "mooves:      # Moove Number, Moo Count, Coverage Gain, Accumulative Coverage Gain\n"
     for i, (moove, moo_count, moo_coverage_gain) in enumerate(zip(moove_sequence, moo_count_sequence, moo_coverage_sequence)):
         t1, t2, t3 = moove
         accumulative_coverage += moo_coverage_gain
         d = determine_direction_from_moove(moove)
         direction_arrow = render_direction_arrow(d) if d is not None else "?"
+        # TODO: map the row number to a letter
+        row_letter = chr(t1[0] + 65)  # Map 0->A, 1->B, 2->C, ...
+        row_str = f"{row_letter}"
+        col_str = f"{t1[1]+1:>2}"
         if moo_coverage_gain > 0:
             # Maximum number of digits in steps is 3 but render 5 zero padded so it looks like the word M00
             comment_annotation = f"# M{i:05d} {moo_count} {moo_coverage_gain} {accumulative_coverage}"
-            moove_record = f"'{t1[0]:>2},{t1[1]:>2} {direction_arrow}'"
+            moove_record = f"'{row_str},{col_str} {direction_arrow}'"
             output += f"  - {moove_record} {comment_annotation}\n"
         
     output += ""
@@ -327,28 +356,38 @@ def render_moove_sequence(
 
 def parallel_process_simulations(grid: Grid, iterations: int, workers: int, strategy: str) -> None:
     all_valid_mooves = generate_all_valid_mooves(grid)
+    dims = grid_dimensions(grid)
+    height, width = dims
+    all_cells = height * width
+    graph = generate_overlaps_graph(all_valid_mooves)
+
     print(f"Total valid 'moo' moves found: {len(all_valid_mooves)}")
-    # The total permuations is 172! for today's grid which has like >300 zeroes in the count of permutations.
-    # So we will try monte carlo style random sampling of the permutations.
-    # The longer we run for the more permuations we will try.
-    # We will track the maximum moo count found and how long it took to find each new maximum to find a point of diminishing returns.
-    # We will also keep a track of past trials to prevent re-trying the same permutation.
+    print(f"Graph of overlapping Mooves has {len(graph)} nodes. And highest degree node has {max(len(v) for v in graph.values())} overlaps.")
+    # The total permuations is NumberOfValidMooves Factorial for a 15x15 grid which has like >300 zeroes in the count of permutations.
+    # We therefore cannot brute force it.
+    # I have added some strategies on how a candidate sequence is generated and those can be selected randomly.
+    # The strategies are:
+    # - Random shuffle of all valid mooves (Monte Carlo trials)
+    # - Greedily select the next moove that gives the highest immediate score (coverage gain) when mooves are equally weighted then randomly select among those.
+    # - Greedily select the next moove that gives the lowest immediate score (coverage gain) when mooves are equally weighted then randomly select among those.
+    # - Greedily select either of the above two at random for each iteration.
+    # - Beam search (not implemented yet)
+    # - All of the above strategies randomly selected for each iteration.
 
     all_moo_counts = []
-
-    # Time tracking to see diminishing returns for simulation.
-    time_start = time.time()
-
     max_mooves = 0
     max_board = None
     max_moove_sequence = None
     N_iters = iterations
 
-    # Create args for workers (seed + mooves list for each iteration)
-    worker_args = [(i, all_valid_mooves, strategy) for i in range(N_iters)]
+    # Time tracking from here since creating worker args can take some time.
+    time_start = time.time()
+    # Create args for workers
+    worker_args = [(i, all_valid_mooves, dims, graph, strategy) for i in range(N_iters)]
+
     # Multiprocessing with proper chunksize
     P = workers if workers > 0 else (os.cpu_count() or 4)
-    optimal_chunksize = max(1, N_iters // (P * 4))
+    optimal_chunksize = max(1, N_iters // (P * 4)) # Aim for at least 4 tasks per worker
     print(f"Using {P} processes with chunksize {optimal_chunksize}")
 
     time_sims_start = time.time()
@@ -359,9 +398,9 @@ def parallel_process_simulations(grid: Grid, iterations: int, workers: int, stra
 
     time_parallel_end = time.time()
     time_parallel_duration = time_parallel_end - time_sims_start
-    print(f"Simulations complete took {time_parallel_duration:.2f}s, processing results...")
+    print(f"Simulations complete took {time_parallel_duration:.2f}s, ({N_iters / time_parallel_duration:.0f} simulations per second)")
     
-    all_moo_counts = [count for _, count, _, _, _ in all_simulations]
+    all_moo_counts = [final_moo_count for _, final_moo_count, _, _, _ in all_simulations]
     max_result = max(all_simulations, key=lambda x: x[1])  # x[1] is moo_count
     min_result = min(all_simulations, key=lambda x: x[1])  # x[1] is moo_count
     max_board, max_mooves, max_moove_sequence, max_moo_count_sequence, max_moo_count_coverage_sequence = max_result
@@ -376,6 +415,11 @@ def parallel_process_simulations(grid: Grid, iterations: int, workers: int, stra
     time_now = time.time()
     total_time = time_now - time_start
     total_sims_time = time_now - time_sims_start
+
+    print(f"Time taken for parallel simulation: {total_sims_time:.2f}s")
+    print(f"Total time taken: {total_time:.2f}s")
+    print(f"Simulations per second: {N_iters / total_sims_time:.0f}")
+    print()
 
     OUTPUT_HISTOGRAM.write_text(json.dumps(render_moo_count_histogram(all_moo_counts), indent=2))
     OUTPUT_COVERAGE_BOARD.write_text(render_board(max_board, grid))
@@ -394,19 +438,20 @@ def parallel_process_simulations(grid: Grid, iterations: int, workers: int, stra
         )
     )
 
+    
+    
+    print(f"Graph of overlapping Mooves has {len(graph)} nodes. And highest degree node has {max(len(v) for v in graph.values())} overlaps.")
+
     print(f"Total valid 'moo' moves found: {len(all_valid_mooves)}")
-    print(f"Max Board coverage: {sum(max_moo_count_coverage_sequence)} --> {15*15 - sum(max_moo_count_coverage_sequence)} dead squares")
-    print(f"Theoretical maxiMOOm moo count: {max_mooves} after {N_iters} iterations")
-    print(f"Theoretical miniMOOm moo count: {min_mooves} after {N_iters} iterations")
-    print(f"Time taken for parallel simulation: {total_sims_time:.2f}s")
-    print(f"Total time taken: {total_time:.2f}s")
-    print(f"Simulations per second: {N_iters / total_sims_time:.0f}")
+    print(f"Max Board coverage: {sum(max_moo_count_coverage_sequence)} --> {all_cells - sum(max_moo_count_coverage_sequence)} dead squares")
+    print(f"MAX moo count: {max_mooves}")
+    print(f"MIN moo count: {min_mooves}")
 
 def generate_sequence_greedily(
-    all_valid_mooves: MooveSequence, seed: int = 42, highest_score: bool = True
+    all_valid_mooves: MooveSequence, dims: GridDimensions, graph: MooveOverlapGraph, seed: int = 42, highest_score: bool = True
 ) -> MooveSequence:
-    
-    board = generate_empty_board()
+
+    board = generate_empty_board(dims)
     moove_sequence = []
     moo_count = 0
     moo_count_sequence = []
@@ -423,7 +468,7 @@ def generate_sequence_greedily(
 
         # Find next best moove
         for moove in remaining_mooves:
-            next_board_state, next_moo_count, coverage_gain = update_board_with_moove(
+            _, _, coverage_gain = update_board_with_moove(
                 board, moo_count, moove
             )
             if coverage_gain <= 0:
@@ -431,7 +476,6 @@ def generate_sequence_greedily(
 
             moove_candidate = (moove, coverage_gain)
             best_moove_candidates.append(moove_candidate)
-
         
         # Subset to only those with the maximum / minimum coverage gain for this round.
         if highest_score:
@@ -459,27 +503,16 @@ def generate_sequence_greedily(
         iteration += 1
     return moove_sequence
 
+def generate_sequence_beam_search(
+        all_valid_mooves: MooveSequence, 
+        dims: GridDimensions, 
+        graph: MooveOverlapGraph, 
+        seed: int = 42, 
+        highest_score: bool = True
+    ) -> MooveSequence:
+    """Generate a sequence of mooves using beam search."""
+    return []
 
-
-def explore_greedily(grid: Grid) -> None:
-    """Explore the grid greedily by always picking the next move that covers the most new squares."""
-    all_valid_mooves = generate_all_valid_mooves(grid)
-
-    moove_sequence = generate_sequence_greedily(all_valid_mooves=all_valid_mooves, seed=42)
-    board, moo_count, _, moo_count_sequence, moo_coverage_gain_sequence = simulate_board(moove_sequence)
-
-    print(f"Total valid 'moo' moves found: {len(all_valid_mooves)}")
-    print(f"Greedy approach resulted in a moo count of: {moo_count}")
-    print(render_board(board, grid))
-
-    OUTPUT_COVERAGE_BOARD.write_text(render_board(board, grid))
-    OUTPUT_MAX_MOO_SEQUENCE.write_text(
-        render_moove_sequence(
-            moove_sequence, 
-            moo_count_sequence, 
-            moo_coverage_gain_sequence
-        )
-    )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Moo Counter")
@@ -490,12 +523,13 @@ if __name__ == "__main__":
         help="Number of worker processes to use. Default is number of CPU cores."
     )
     parser.add_argument(
-        "--strategy", type=str, default="greedy", choices=["random", "greedy-high", "greedy-low", "greedy", "all"],
+        "--strategy", type=str, default="all", choices=["random", "greedy-high", "greedy-low", "greedy", "beam-search", "all"],
         help="Strategy for generating moove sequences."
     )
     args = parser.parse_args(sys.argv[1:])
 
     grid = grid_from_live() if args.puzzle == 'live' else grid_from_file(pathlib.Path(args.puzzle))
-
+    
     parallel_process_simulations(grid, args.iterations, args.workers, args.strategy)
-    # explore_greedily(grid)
+    
+    
