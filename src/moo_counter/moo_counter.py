@@ -187,6 +187,14 @@ def generate_empty_board(dims: GridDimensions) -> BoardState:
     return [[False for _ in range(width)] for _ in range(height)]
 
 
+def get_moove_coverage(board: BoardState, moove: Moove) -> int:
+    moo_coverage = 0
+    for t in moove:
+        if board[t[0]][t[1]] is True:
+            moo_coverage += 1
+    return moo_coverage
+
+
 def update_board_with_moove(
     board: BoardState, moo_count: int, moove: Moove
 ) -> tuple[BoardState, int, int]:
@@ -199,10 +207,8 @@ def update_board_with_moove(
     output_board_state = [row[:] for row in board]  # Deep copy of the board
 
     # Determine how much of the existing board state is covered already by this move.
-    moo_coverage = 0
-    for t in moove:
-        if board[t[0]][t[1]] is True:
-            moo_coverage += 1
+
+    moo_coverage = get_moove_coverage(board, moove)    
 
     # Place 'm' and 'o's on the board
     if moo_coverage < 3:
@@ -465,18 +471,20 @@ def generate_sequence_greedily(
         
         best_moove_candidates: list[MooveCandidate] = []
         best_coverage_gain = 3
-
+        dead_moves = set()
         # Find next best moove
         for moove in remaining_mooves:
             _, _, coverage_gain = update_board_with_moove(
                 board, moo_count, moove
             )
             if coverage_gain <= 0:
-                continue  # Invalid move, skip
-
-            moove_candidate = (moove, coverage_gain)
-            best_moove_candidates.append(moove_candidate)
+                # This moove is already dead at this point.
+                dead_moves.add(moove)
+            else:
+                moove_candidate = (moove, coverage_gain)
+                best_moove_candidates.append(moove_candidate)
         
+        remaining_mooves -= dead_moves
         # Subset to only those with the maximum / minimum coverage gain for this round.
         if highest_score:
             min_coverage_gain = min((cg for _, cg in best_moove_candidates), default=3)
@@ -500,6 +508,7 @@ def generate_sequence_greedily(
         moo_count_sequence.append(moo_count)
         moo_coverage_gain_sequence.append(coverage_gain)
         remaining_mooves.remove(best_moove)
+        
         iteration += 1
     return moove_sequence
 
