@@ -7,6 +7,7 @@
 # ]
 # ///
 # Standard Library
+from dataclasses import dataclass
 import argparse
 import itertools
 import json
@@ -295,8 +296,8 @@ def generate_sequence_from_strategy(
         return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=False)
     elif strategy == 'greedy':
         return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
-    elif strategy == 'beam-search':
-        return generate_sequence_beam_search(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
+    # elif strategy == 'beam-search':
+    #     return generate_sequence_beam_search(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -485,7 +486,9 @@ def generate_sequence_greedily(
                 best_moove_candidates.append(moove_candidate)
         
         remaining_mooves -= dead_moves
-        # Subset to only those with the maximum / minimum coverage gain for this round.
+        # Select mooves based on strategy:
+        # For MAX score: Want MIN coverage gain (= MAX overlap) to conserve coverage
+        # For MIN score: Want MAX coverage gain (= MIN overlap) to cover efficiently
         if highest_score:
             min_coverage_gain = min((cg for _, cg in best_moove_candidates), default=3)
             best_moove_candidates = [mc for mc in best_moove_candidates if mc[1] == min_coverage_gain]
@@ -517,10 +520,169 @@ def generate_sequence_beam_search(
         dims: GridDimensions, 
         graph: MooveOverlapGraph, 
         seed: int = 42, 
-        highest_score: bool = True
+        highest_score: bool = True,
+        beam_width: int = 50
     ) -> MooveSequence:
-    """Generate a sequence of mooves using beam search."""
-    return []
+    """Generate a sequence of mooves using beam search.
+    
+    For MAX score: Find sequences with maximum overlaps to conserve coverage
+    For MIN score: Find sequences with minimum overlaps to cover board efficiently
+    """
+    
+    
+    random.seed(seed)
+    
+    @dataclass
+    class BeamState:
+        board: BoardState
+        moo_count: int
+        sequence: MooveSequence
+        remaining_mooves: set[Moove]
+        coverage_used: int
+        
+        def __lt__(self, other):
+            # For heap comparison
+            return self.score < other.score
+        
+        @property
+        def score(self) -> float:
+            """Heuristic evaluation of this state."""
+            if highest_score:
+                # For MAX: Just use actual moo_count as primary metric
+                # Add small bonus for having many viable mooves left
+                viable_count = sum(1 for m in self.remaining_mooves 
+                                 if get_moove_coverage(self.board, m) < 3)
+                # Primary sort by moo_count, secondary by viable mooves
+                return self.moo_count * 1000 + viable_count
+            else:
+                # MIN: Want to cover all cells with minimum mooves
+                height, width = dims
+                uncovered_cells = sum(1 for r in range(height) for c in range(width) 
+                                    if not self.board[r][c])
+                # Prioritize states that cover new ground efficiently
+                if uncovered_cells == 0:
+                    return self.moo_count  # Done, return actual score
+                
+                # Estimate minimum mooves needed for remaining coverage
+                min_mooves_needed = uncovered_cells / 3.0
+                
+                # Penalize if we're killing too many mooves
+                dead_moove_penalty = sum(1 for m in self.remaining_mooves 
+                                        if get_moove_coverage(self.board, m) == 3) * 0.1
+                
+                # Heuristic: current + estimated minimum remaining
+                return self.moo_count + min_mooves_needed + dead_moove_penalty
+    
+    def expand_state(state: BeamState) -> list[BeamState]:
+        """Generate all possible next states from current state."""
+        next_states = []
+        
+        # Evaluate all remaining mooves
+        moove_evaluations = []
+        for moove in state.remaining_mooves:
+            coverage = get_moove_coverage(state.board, moove)
+            if coverage < 3:  # Only consider viable mooves
+                new_coverage = 3 - coverage
+                moove_evaluations.append((moove, new_coverage, coverage))
+        
+        if not moove_evaluations:
+            return []
+        
+        # For MAX: Try a sampling strategy similar to greedy but with more options
+        if highest_score:
+            # Group mooves by their coverage gain
+            by_coverage = {}
+            for moove, new_cov, overlap in moove_evaluations:
+                if new_cov not in by_coverage:
+                    by_coverage[new_cov] = []
+                by_coverage[new_cov].append((moove, new_cov, overlap))
+            
+            # For MAX, prefer minimum coverage gain (maximum overlap)
+            candidates = []
+            for coverage_gain in sorted(by_coverage.keys()):
+                candidates.extend(by_coverage[coverage_gain])
+                # Take all mooves with best overlap, plus some from next tier
+                if len(candidates) >= beam_width:
+                    break
+        else:
+            # MIN: Prefer mooves with less overlap (coverage 0)
+            moove_evaluations.sort(key=lambda x: (-x[1], x[2]))  # High new coverage, low overlap
+            candidates = moove_evaluations[:min(beam_width * 2, len(moove_evaluations))]
+        
+        for moove, _, _ in candidates:
+            # Create new state
+            new_board, new_count, coverage_gain = update_board_with_moove(
+                state.board, state.moo_count, moove
+            )
+            
+            if coverage_gain > 0:  # Valid move
+                new_sequence = state.sequence + [moove]
+                new_remaining = state.remaining_mooves - {moove}
+                new_coverage_used = state.coverage_used + coverage_gain
+                
+                next_states.append(BeamState(
+                    board=new_board,
+                    moo_count=new_count,
+                    sequence=new_sequence,
+                    remaining_mooves=new_remaining,
+                    coverage_used=new_coverage_used
+                ))
+        
+        return next_states
+    
+    # Initialize beam with empty state
+    initial_state = BeamState(
+        board=generate_empty_board(dims),
+        moo_count=0,
+        sequence=[],
+        remaining_mooves=set(all_valid_mooves),
+        coverage_used=0
+    )
+    
+    beam = [initial_state]
+    best_complete_state = initial_state
+    
+    # Beam search iterations
+    max_iterations = len(all_valid_mooves)* 4
+    for i in range(max_iterations):
+        # print(f"Beam search iteration {i+1}, current beam size: {len(beam)}")
+        if not beam:
+            break
+            
+        # Expand all states in current beam
+        all_next_states = []
+        for state in beam:
+            next_states = expand_state(state)
+            all_next_states.extend(next_states)
+        
+        if not all_next_states:
+            # No more valid moves from any state
+            break
+        
+        # Select top beam_width states based on heuristic
+        all_next_states.sort(key=lambda s: s.score, reverse=(highest_score))
+        beam = all_next_states[:beam_width]
+        
+        # Track best complete solution
+        for state in beam:
+            # Check if this state has better score than current best
+            if highest_score:
+                if state.moo_count > best_complete_state.moo_count:
+                    best_complete_state = state
+            else:
+                # For MIN, also consider if we've covered everything
+                height, width = dims
+                uncovered = sum(1 for r in range(height) for c in range(width) 
+                              if not state.board[r][c])
+                if uncovered == 0 or state.moo_count < best_complete_state.moo_count:
+                    best_complete_state = state
+        
+        # Early termination if all states have exhausted viable mooves
+        if all(sum(1 for m in s.remaining_mooves if get_moove_coverage(s.board, m) < 3) == 0 
+               for s in beam):
+            break
+    
+    return best_complete_state.sequence
 
 
 if __name__ == "__main__":
@@ -538,7 +700,23 @@ if __name__ == "__main__":
     args = parser.parse_args(sys.argv[1:])
 
     grid = grid_from_live() if args.puzzle == 'live' else grid_from_file(pathlib.Path(args.puzzle))
-    
-    parallel_process_simulations(grid, args.iterations, args.workers, args.strategy)
-    
+    all_valid_mooves = generate_all_valid_mooves(grid)
+    graph = generate_overlaps_graph(all_valid_mooves)
+    if args.strategy == 'beam-search':
+        mooves = generate_sequence_beam_search(
+            all_valid_mooves=all_valid_mooves, 
+            dims=grid_dimensions(grid), 
+            graph=graph, 
+            seed=42, 
+            highest_score=True,
+            beam_width=max(100, len(all_valid_mooves) // 4)
+        )
+        simulation_result = simulate_board(mooves, grid_dimensions(grid))
+        board, moo_count, moove_sequence, moo_count_sequence, moo_coverage_gain_sequence = simulation_result
+        print(f"Max moo count from beam search: {moo_count}")
+        print(f"Board coverage:\n{render_board(board, grid)}")
+        print(f"Moove sequence:\n{render_moove_sequence(moove_sequence, moo_count_sequence, moo_coverage_gain_sequence)}")
+    else:
+        parallel_process_simulations(grid, args.iterations, args.workers, args.strategy)
+
     
