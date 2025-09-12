@@ -286,7 +286,7 @@ def generate_sequence_from_strategy(
     """Generate a sequence of mooves based on the given strategy."""
     random.seed(random_seed)
     if strategy == 'all':
-        strategy = random.choice(['random', 'greedy-high', 'greedy-low'])
+        strategy = random.choice(['random', 'greedy', 'mcts'])
 
     if strategy == 'random':
         return random.sample(all_valid_mooves, len(all_valid_mooves))
@@ -296,6 +296,8 @@ def generate_sequence_from_strategy(
         return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=False)
     elif strategy == 'greedy':
         return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
+    elif strategy == 'mcts':
+        return generate_sequence_mcts(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]), iterations=100)
     # elif strategy == 'beam-search':
     #     return generate_sequence_beam_search(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
     else:
@@ -685,6 +687,252 @@ def generate_sequence_beam_search(
     return best_complete_state.sequence
 
 
+def generate_sequence_mcts(
+        all_valid_mooves: MooveSequence,
+        dims: GridDimensions,
+        graph: MooveOverlapGraph,
+        seed: int = 42,
+        highest_score: bool = True,
+        iterations: int = 1000,
+        exploration_constant: float = 1.414
+    ) -> MooveSequence:
+    """Generate a sequence using Monte Carlo Tree Search (MCTS).
+    
+    MCTS builds a search tree by:
+    1. Selection: Use UCB1 to select promising nodes
+    2. Expansion: Add a new child node
+    3. Simulation: Random rollout from the new node
+    4. Backpropagation: Update statistics back up the tree
+    """
+    import math
+    from dataclasses import dataclass, field
+    from typing import Optional
+    
+    random.seed(seed)
+    
+    @dataclass
+    class MCTSNode:
+        board: BoardState
+        moo_count: int
+        moove: Optional[Moove]  # The moove that led to this state
+        remaining_mooves: set[Moove]
+        parent: Optional['MCTSNode'] = None
+        children: list['MCTSNode'] = field(default_factory=list)
+        visits: int = 0
+        total_score: float = 0.0
+        unexplored_mooves: list[Moove] = field(default_factory=list)
+        
+        def __post_init__(self):
+            # Initialize unexplored mooves with all viable mooves
+            if not self.unexplored_mooves and self.remaining_mooves:
+                self.unexplored_mooves = [
+                    m for m in self.remaining_mooves 
+                    if get_moove_coverage(self.board, m) < 3
+                ]
+                random.shuffle(self.unexplored_mooves)
+        
+        @property
+        def average_score(self) -> float:
+            return self.total_score / self.visits if self.visits > 0 else 0.0
+        
+        @property
+        def is_fully_expanded(self) -> bool:
+            return len(self.unexplored_mooves) == 0
+        
+        @property
+        def is_terminal(self) -> bool:
+            # Terminal if no viable mooves remain
+            return all(get_moove_coverage(self.board, m) >= 3 
+                      for m in self.remaining_mooves)
+        
+        def ucb1_score(self, exploration: float) -> float:
+            """Calculate UCB1 score for node selection."""
+            if self.visits == 0:
+                return float('inf')
+            
+            exploitation = self.average_score
+            exploration_term = exploration * math.sqrt(
+                math.log(self.parent.visits) / self.visits
+            )
+            
+            # For MAX, we want high scores; for MIN, we want low scores
+            if highest_score:
+                return exploitation + exploration_term
+            else:
+                return -exploitation + exploration_term
+        
+        def select_child(self, exploration: float) -> 'MCTSNode':
+            """Select best child using UCB1."""
+            return max(self.children, key=lambda c: c.ucb1_score(exploration))
+        
+        def expand(self) -> 'MCTSNode':
+            """Expand by adding a new child node."""
+            if not self.unexplored_mooves:
+                return self
+            
+            # Take next unexplored moove
+            moove = self.unexplored_mooves.pop()
+            
+            # Create new board state
+            new_board, new_count, _ = update_board_with_moove(
+                self.board, self.moo_count, moove
+            )
+            
+            # Create child node
+            child = MCTSNode(
+                board=new_board,
+                moo_count=new_count,
+                moove=moove,
+                remaining_mooves=self.remaining_mooves - {moove},
+                parent=self
+            )
+            
+            self.children.append(child)
+            return child
+        
+        def rollout(self) -> int:
+            """Perform random rollout from this node to estimate value."""
+            # Use greedy strategy for rollout (faster and often better)
+            current_board = [row[:] for row in self.board]
+            current_count = self.moo_count
+            current_remaining = set(self.remaining_mooves)
+            
+            while current_remaining:
+                # Find best moove greedily
+                best_mooves = []
+                best_coverage = -1 if highest_score else 4
+                
+                for moove in current_remaining:
+                    coverage = get_moove_coverage(current_board, moove)
+                    if coverage >= 3:
+                        continue
+                    
+                    new_coverage = 3 - coverage
+                    
+                    if highest_score:
+                        # MAX: prefer minimum new coverage (maximum overlap)
+                        if best_coverage == -1 or new_coverage < best_coverage:
+                            best_coverage = new_coverage
+                            best_mooves = [moove]
+                        elif new_coverage == best_coverage:
+                            best_mooves.append(moove)
+                    else:
+                        # MIN: prefer maximum new coverage (minimum overlap)
+                        if best_coverage == 4 or new_coverage > best_coverage:
+                            best_coverage = new_coverage
+                            best_mooves = [moove]
+                        elif new_coverage == best_coverage:
+                            best_mooves.append(moove)
+                
+                if not best_mooves:
+                    break
+                
+                # Random selection among best
+                selected = random.choice(best_mooves)
+                current_board, current_count, _ = update_board_with_moove(
+                    current_board, current_count, selected
+                )
+                current_remaining.remove(selected)
+            
+            return current_count
+        
+        def backpropagate(self, score: int):
+            """Backpropagate score up the tree."""
+            self.visits += 1
+            self.total_score += score
+            if self.parent:
+                self.parent.backpropagate(score)
+    
+    # Initialize root node
+    root = MCTSNode(
+        board=generate_empty_board(dims),
+        moo_count=0,
+        moove=None,
+        remaining_mooves=set(all_valid_mooves)
+    )
+    
+    # Run MCTS iterations
+    for _ in range(iterations):
+        node = root
+        
+        # Selection: traverse tree using UCB1
+        while not node.is_terminal and node.is_fully_expanded:
+            node = node.select_child(exploration_constant)
+        
+        # Expansion: add new child if not terminal
+        if not node.is_terminal and not node.is_fully_expanded:
+            node = node.expand()
+        
+        # Simulation: rollout from the node
+        if not node.is_terminal:
+            score = node.rollout()
+        else:
+            score = node.moo_count
+        
+        # Backpropagation: update statistics
+        node.backpropagate(score)
+    
+    # Extract best path from root to leaf
+    sequence = []
+    current = root
+    
+    # Follow the most visited path in the tree
+    while current.children:
+        # Select child with highest visit count (most explored)
+        best_child = max(current.children, key=lambda c: c.visits)
+        if best_child.moove:
+            sequence.append(best_child.moove)
+        current = best_child
+    
+    # If the tree doesn't reach a terminal state, complete the game greedily
+    # This is necessary because MCTS may not fully expand the tree in limited iterations
+    if not current.is_terminal and current.remaining_mooves:
+        # Complete the sequence using greedy rollout from final tree node
+        current_board = [row[:] for row in current.board]
+        current_count = current.moo_count
+        current_remaining = set(current.remaining_mooves)
+        
+        while current_remaining:
+            # Find best moove greedily
+            best_mooves = []
+            best_coverage = -1 if highest_score else 4
+            
+            for moove in current_remaining:
+                coverage = get_moove_coverage(current_board, moove)
+                if coverage >= 3:
+                    continue
+                
+                new_coverage = 3 - coverage
+                
+                if highest_score:
+                    # MAX: prefer minimum new coverage (maximum overlap)
+                    if best_coverage == -1 or new_coverage < best_coverage:
+                        best_coverage = new_coverage
+                        best_mooves = [moove]
+                    elif new_coverage == best_coverage:
+                        best_mooves.append(moove)
+                else:
+                    # MIN: prefer maximum new coverage (minimum overlap)
+                    if best_coverage == 4 or new_coverage > best_coverage:
+                        best_coverage = new_coverage
+                        best_mooves = [moove]
+                    elif new_coverage == best_coverage:
+                        best_mooves.append(moove)
+            
+            if not best_mooves:
+                break
+            
+            # Random selection among best
+            selected = random.choice(best_mooves)
+            sequence.append(selected)
+            current_board, current_count, _ = update_board_with_moove(
+                current_board, current_count, selected
+            )
+            current_remaining.remove(selected)
+    
+    return sequence
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Moo Counter")
     parser.add_argument("--puzzle", type=str, help="Path to the puzzle file")
@@ -694,7 +942,8 @@ if __name__ == "__main__":
         help="Number of worker processes to use. Default is number of CPU cores."
     )
     parser.add_argument(
-        "--strategy", type=str, default="all", choices=["random", "greedy-high", "greedy-low", "greedy", "beam-search", "all"],
+        "--strategy", type=str, default="all", 
+        choices=["random", "greedy-high", "greedy-low", "greedy", "beam-search", "mcts", "all"],
         help="Strategy for generating moove sequences."
     )
     args = parser.parse_args(sys.argv[1:])
@@ -702,6 +951,7 @@ if __name__ == "__main__":
     grid = grid_from_live() if args.puzzle == 'live' else grid_from_file(pathlib.Path(args.puzzle))
     all_valid_mooves = generate_all_valid_mooves(grid)
     graph = generate_overlaps_graph(all_valid_mooves)
+    
     if args.strategy == 'beam-search':
         mooves = generate_sequence_beam_search(
             all_valid_mooves=all_valid_mooves, 
@@ -716,6 +966,22 @@ if __name__ == "__main__":
         print(f"Max moo count from beam search: {moo_count}")
         print(f"Board coverage:\n{render_board(board, grid)}")
         print(f"Moove sequence:\n{render_moove_sequence(moove_sequence, moo_count_sequence, moo_coverage_gain_sequence)}")
+    # elif args.strategy == 'mcts':
+    #     mooves = generate_sequence_mcts(
+    #         all_valid_mooves=all_valid_mooves,
+    #         dims=grid_dimensions(grid),
+    #         graph=graph,
+    #         seed=42,
+    #         highest_score=True,
+    #         iterations=args.iterations,
+    #         exploration_constant=1.414 # sqrt(2)
+    #     )
+    #     simulation_result = simulate_board(mooves, grid_dimensions(grid))
+    #     board, moo_count, moove_sequence, moo_count_sequence, moo_coverage_gain_sequence = simulation_result
+    #     print(f"Max moo count from MCTS: {moo_count}")
+    #     print(f"Board coverage:\n{render_board(board, grid)}")
+    #     output_seq = render_moove_sequence(moove_sequence, moo_count_sequence, moo_coverage_gain_sequence)
+    #     print(f"Moove sequence:\n{output_seq}")
     else:
         parallel_process_simulations(grid, args.iterations, args.workers, args.strategy)
 
