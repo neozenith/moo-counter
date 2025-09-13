@@ -19,10 +19,10 @@ jobs:
         run: uv sync
 
       - name: Run Moo Counter Simulation
-        run: uv run src/moo_counter/moo_counter.py --puzzle live --iterations 10000 --strategy all --workers 2
+        run: make daily
 
       - uses: actions/upload-artifact@v4
         with:
           name: moo_count_histogram
-          path: output/moo_count_histogram.json
+          path: output/*.json
 

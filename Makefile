@@ -1,3 +1,7 @@
+daily:
+	uv run src/moo_counter/moo_counter.py --puzzle micro --strategy greedy-high  --iterations 100
+	uv run src/moo_counter/moo_counter.py --puzzle mini --strategy greedy-high  --iterations 1000
+	uv run src/moo_counter/moo_counter.py --puzzle maxi --strategy greedy-high  --iterations 10000
 ######################################################################
 # SETUP
 ######################################################################

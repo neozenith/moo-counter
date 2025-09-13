@@ -3,7 +3,7 @@
 # requires-python = ">=3.12"
 # dependencies = [
 #   "httpx",
-#   "beautifulsoup4",
+#   "playwright",
 # ]
 # ///
 # Standard Library
@@ -18,11 +18,14 @@ import os
 import time
 from multiprocessing import Pool
 
-import httpx
-from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright
 
-OUTPUT_DIR = pathlib.Path(__file__).parent.parent.parent / "output"
+PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
+OUTPUT_DIR = PROJECT_ROOT / "output"
 OUTPUT_DIR.mkdir(exist_ok=True, parents=True)
+
+OUTPUT_PUZZLES_DIR = PROJECT_ROOT / "puzzles"
+OUTPUT_PUZZLES_DIR.mkdir(exist_ok=True, parents=True)
 
 OUTPUT_HISTOGRAM = OUTPUT_DIR / "moo_count_histogram.json"
 OUTPUT_COVERAGE_BOARD = OUTPUT_DIR / "moo_coverage_board.txt"
@@ -51,20 +54,27 @@ MooCountHistogram = dict[str, int]  # Histogram of moo counts from multiple simu
 
 MooveOverlapGraph = dict[Moove, set[Moove]]  # Graph of mooves that have a relationship to another moove because they overlap
 
-def grid_from_live() -> Grid:
+valid_sizes = ["micro", "mini", "maxi"]
+
+def today_date_str() -> str:
+    return time.strftime("%Y%m%d", time.localtime())
+
+def fetch_live_puzzle_input(size: str) -> str:
+    """Fetch the live puzzle input from the website."""
+    url = f"https://find-a-moo.kleeut.com/plain-text?size={size}"
+    with sync_playwright() as p:
+        browser = p.chromium.launch()
+        page = browser.new_page()
+        page.goto(url)
+        content = page.locator("body > pre").inner_text()
+        browser.close()
+    return content.replace(" ", "")
+
+def grid_from_live(size: str) -> tuple[Grid, str]:
     """Generate the grid from the live puzzle input."""
-    url = "https://find-a-moo.kleeut.com/plain-text"
-    
-    response = httpx.get(url)
-    response.raise_for_status()
-    text = response.text
-    # TODO: let it finish rendering the javascript before scraping.
-
-    soup = BeautifulSoup(text, "html.parser")
-    content = soup.select("body > pre")[0].get_text()
-
+    content = fetch_live_puzzle_input(size)
     grid = [list(line.replace(" ", "")) for line in content.splitlines()]
-    return grid
+    return grid, content
 
 
 def grid_from_file(path: pathlib.Path) -> Grid:
@@ -297,9 +307,7 @@ def generate_sequence_from_strategy(
     elif strategy == 'greedy':
         return generate_sequence_greedily(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
     elif strategy == 'mcts':
-        return generate_sequence_mcts(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]), iterations=100)
-    # elif strategy == 'beam-search':
-    #     return generate_sequence_beam_search(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=random.choice([True, False]))
+        return generate_sequence_mcts(all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, seed=random_seed, highest_score=True, iterations=200)
     else:
         raise ValueError(f"Unknown strategy: {strategy}")
 
@@ -308,33 +316,31 @@ def worker_simulate(args: tuple[int, MooveSequence, GridDimensions, MooveOverlap
     seed, all_valid_mooves, dims, graph, strategy = args
     sequence = generate_sequence_from_strategy(strategy, all_valid_mooves=all_valid_mooves, dims=dims, graph=graph, random_seed=seed)
     return simulate_board(sequence, dims)
- # Offload the shuffle to the worker.
 
-def render_moo_count_histogram(all_moo_counts: MooveCountSequence) -> MooCountHistogram:
+
+def build_moo_count_histogram(all_moo_counts: MooveCountSequence) -> MooCountHistogram:
     moo_count_histogram = {}
     for count in all_moo_counts:
         if count in moo_count_histogram.keys():
             moo_count_histogram[count] += 1
         else:
             moo_count_histogram[count] = 1
-
-    histogram_max_frequency = float(max(moo_count_histogram.values()))
-    screen_width = 40.0
-    max_stars = max(screen_width, histogram_max_frequency)
-
-    sorted_moo_count_histogram_keys = sorted(moo_count_histogram.keys())
-    for key in sorted_moo_count_histogram_keys:
-        print(
-            f"Moo count {key}: {int((moo_count_histogram[key] / max_stars) * screen_width) * '🐮'} {moo_count_histogram[key]}"
-        )
-    
-    # sort the dictionary by keys for easier reading
     moo_count_histogram = {k: moo_count_histogram[k] for k in sorted(moo_count_histogram.keys())}
     return moo_count_histogram
 
+def render_moo_count_histogram(histogram: MooCountHistogram, screen_width: int = 40) -> str:
+    histogram_max_frequency = float(max(histogram.values()))
+    max_stars = max(screen_width, histogram_max_frequency)
+    output = ""
+    for key, value in histogram.items():
+        scaled_bar_length = int((value / max_stars) * screen_width)
+        bar = '🐮' * scaled_bar_length
+        output += f"Moo count {key}: {bar} {value}\n"
+    return output
+
 def render_moove(moove: Moove) -> str:
     """Render a single moove in the format 'A, 1 →' or 'H,12 ↖'."""
-    t1, t2, t3 = moove
+    t1, _, _ = moove
     return f"'{chr(t1[0] + 65)},{t1[1]+1:>2} {render_direction_arrow(determine_direction_from_moove(moove))}'"
 
 def render_moove_sequence(
@@ -363,7 +369,7 @@ def render_moove_sequence(
     return output
 
 
-def parallel_process_simulations(grid: Grid, iterations: int, workers: int, strategy: str) -> None:
+def parallel_process_simulations(grid: Grid, iterations: int, workers: int, strategy: str):
     all_valid_mooves = generate_all_valid_mooves(grid)
     dims = grid_dimensions(grid)
     height, width = dims
@@ -430,31 +436,15 @@ def parallel_process_simulations(grid: Grid, iterations: int, workers: int, stra
     print(f"Simulations per second: {N_iters / total_sims_time:.0f}")
     print()
 
-    OUTPUT_HISTOGRAM.write_text(json.dumps(render_moo_count_histogram(all_moo_counts), indent=2))
-    OUTPUT_COVERAGE_BOARD.write_text(render_board(max_board, grid))
-    OUTPUT_MAX_MOO_SEQUENCE.write_text(
-        render_moove_sequence(
-            max_moove_sequence, 
-            max_moo_count_sequence, 
-            max_moo_count_coverage_sequence
-        )
-    )
-    OUTPUT_MIN_MOO_SEQUENCE.write_text(
-        render_moove_sequence(
-            min_moove_sequence, 
-            min_moo_count_sequence, 
-            min_moo_count_coverage_sequence
-        )
-    )
+    histogram = build_moo_count_histogram(all_moo_counts)
+    max_coverage = sum(max_moo_count_coverage_sequence)
+    dead_cells = all_cells - max_coverage
 
-    
-    
-    print(f"Graph of overlapping Mooves has {len(graph)} nodes. And highest degree node has {max(len(v) for v in graph.values())} overlaps.")
-
-    print(f"Total valid 'moo' moves found: {len(all_valid_mooves)}")
-    print(f"Max Board coverage: {sum(max_moo_count_coverage_sequence)} --> {all_cells - sum(max_moo_count_coverage_sequence)} dead squares")
-    print(f"MAX moo count: {max_mooves}")
-    print(f"MIN moo count: {min_mooves}")
+    return (all_valid_mooves, max_coverage, dead_cells, 
+            max_mooves, min_mooves, histogram, graph, 
+            max_moove_sequence, max_moo_count_sequence, max_moo_count_coverage_sequence,
+            min_moove_sequence, min_moo_count_sequence, min_moo_count_coverage_sequence
+        )
 
 def generate_sequence_greedily(
     all_valid_mooves: MooveSequence, dims: GridDimensions, graph: MooveOverlapGraph, seed: int = 42, highest_score: bool = True
@@ -516,176 +506,6 @@ def generate_sequence_greedily(
         
         iteration += 1
     return moove_sequence
-
-def generate_sequence_beam_search(
-        all_valid_mooves: MooveSequence, 
-        dims: GridDimensions, 
-        graph: MooveOverlapGraph, 
-        seed: int = 42, 
-        highest_score: bool = True,
-        beam_width: int = 50
-    ) -> MooveSequence:
-    """Generate a sequence of mooves using beam search.
-    
-    For MAX score: Find sequences with maximum overlaps to conserve coverage
-    For MIN score: Find sequences with minimum overlaps to cover board efficiently
-    """
-    
-    
-    random.seed(seed)
-    
-    @dataclass
-    class BeamState:
-        board: BoardState
-        moo_count: int
-        sequence: MooveSequence
-        remaining_mooves: set[Moove]
-        coverage_used: int
-        
-        def __lt__(self, other):
-            # For heap comparison
-            return self.score < other.score
-        
-        @property
-        def score(self) -> float:
-            """Heuristic evaluation of this state."""
-            if highest_score:
-                # For MAX: Just use actual moo_count as primary metric
-                # Add small bonus for having many viable mooves left
-                viable_count = sum(1 for m in self.remaining_mooves 
-                                 if get_moove_coverage(self.board, m) < 3)
-                # Primary sort by moo_count, secondary by viable mooves
-                return self.moo_count * 1000 + viable_count
-            else:
-                # MIN: Want to cover all cells with minimum mooves
-                height, width = dims
-                uncovered_cells = sum(1 for r in range(height) for c in range(width) 
-                                    if not self.board[r][c])
-                # Prioritize states that cover new ground efficiently
-                if uncovered_cells == 0:
-                    return self.moo_count  # Done, return actual score
-                
-                # Estimate minimum mooves needed for remaining coverage
-                min_mooves_needed = uncovered_cells / 3.0
-                
-                # Penalize if we're killing too many mooves
-                dead_moove_penalty = sum(1 for m in self.remaining_mooves 
-                                        if get_moove_coverage(self.board, m) == 3) * 0.1
-                
-                # Heuristic: current + estimated minimum remaining
-                return self.moo_count + min_mooves_needed + dead_moove_penalty
-    
-    def expand_state(state: BeamState) -> list[BeamState]:
-        """Generate all possible next states from current state."""
-        next_states = []
-        
-        # Evaluate all remaining mooves
-        moove_evaluations = []
-        for moove in state.remaining_mooves:
-            coverage = get_moove_coverage(state.board, moove)
-            if coverage < 3:  # Only consider viable mooves
-                new_coverage = 3 - coverage
-                moove_evaluations.append((moove, new_coverage, coverage))
-        
-        if not moove_evaluations:
-            return []
-        
-        # For MAX: Try a sampling strategy similar to greedy but with more options
-        if highest_score:
-            # Group mooves by their coverage gain
-            by_coverage = {}
-            for moove, new_cov, overlap in moove_evaluations:
-                if new_cov not in by_coverage:
-                    by_coverage[new_cov] = []
-                by_coverage[new_cov].append((moove, new_cov, overlap))
-            
-            # For MAX, prefer minimum coverage gain (maximum overlap)
-            candidates = []
-            for coverage_gain in sorted(by_coverage.keys()):
-                candidates.extend(by_coverage[coverage_gain])
-                # Take all mooves with best overlap, plus some from next tier
-                if len(candidates) >= beam_width:
-                    break
-        else:
-            # MIN: Prefer mooves with less overlap (coverage 0)
-            moove_evaluations.sort(key=lambda x: (-x[1], x[2]))  # High new coverage, low overlap
-            candidates = moove_evaluations[:min(beam_width * 2, len(moove_evaluations))]
-        
-        for moove, _, _ in candidates:
-            # Create new state
-            new_board, new_count, coverage_gain = update_board_with_moove(
-                state.board, state.moo_count, moove
-            )
-            
-            if coverage_gain > 0:  # Valid move
-                new_sequence = state.sequence + [moove]
-                new_remaining = state.remaining_mooves - {moove}
-                new_coverage_used = state.coverage_used + coverage_gain
-                
-                next_states.append(BeamState(
-                    board=new_board,
-                    moo_count=new_count,
-                    sequence=new_sequence,
-                    remaining_mooves=new_remaining,
-                    coverage_used=new_coverage_used
-                ))
-        
-        return next_states
-    
-    # Initialize beam with empty state
-    initial_state = BeamState(
-        board=generate_empty_board(dims),
-        moo_count=0,
-        sequence=[],
-        remaining_mooves=set(all_valid_mooves),
-        coverage_used=0
-    )
-    
-    beam = [initial_state]
-    best_complete_state = initial_state
-    
-    # Beam search iterations
-    max_iterations = len(all_valid_mooves)* 4
-    for i in range(max_iterations):
-        # print(f"Beam search iteration {i+1}, current beam size: {len(beam)}")
-        if not beam:
-            break
-            
-        # Expand all states in current beam
-        all_next_states = []
-        for state in beam:
-            next_states = expand_state(state)
-            all_next_states.extend(next_states)
-        
-        if not all_next_states:
-            # No more valid moves from any state
-            break
-        
-        # Select top beam_width states based on heuristic
-        all_next_states.sort(key=lambda s: s.score, reverse=(highest_score))
-        beam = all_next_states[:beam_width]
-        
-        # Track best complete solution
-        for state in beam:
-            # Check if this state has better score than current best
-            if highest_score:
-                if state.moo_count > best_complete_state.moo_count:
-                    best_complete_state = state
-            else:
-                # For MIN, also consider if we've covered everything
-                height, width = dims
-                uncovered = sum(1 for r in range(height) for c in range(width) 
-                              if not state.board[r][c])
-                if uncovered == 0 or state.moo_count < best_complete_state.moo_count:
-                    best_complete_state = state
-        
-        # Early termination if all states have exhausted viable mooves
-        if all(sum(1 for m in s.remaining_mooves if get_moove_coverage(s.board, m) < 3) == 0 
-               for s in beam):
-            break
-    
-    return best_complete_state.sequence
-
 
 def generate_sequence_mcts(
         all_valid_mooves: MooveSequence,
@@ -948,41 +768,72 @@ if __name__ == "__main__":
     )
     args = parser.parse_args(sys.argv[1:])
 
-    grid = grid_from_live() if args.puzzle == 'live' else grid_from_file(pathlib.Path(args.puzzle))
+    if args.puzzle in valid_sizes:
+        grid, content = grid_from_live(args.puzzle)
+        dims = grid_dimensions(grid)
+        output_puzzle_file = OUTPUT_PUZZLES_DIR / f"{today_date_str()}-{dims[0]}-{args.puzzle}.moo"
+        output_puzzle_file.write_text(content)
+        output_filepath = (OUTPUT_DIR / output_puzzle_file.name).with_suffix(".json")
+    else:
+        grid = grid_from_file(pathlib.Path(args.puzzle))
+        dims = grid_dimensions(grid)
+        output_filepath = (OUTPUT_DIR / f"{pathlib.Path(args.puzzle).name}").with_suffix(".json")
+    
     all_valid_mooves = generate_all_valid_mooves(grid)
     graph = generate_overlaps_graph(all_valid_mooves)
+    graph_degrees = {render_moove(k):len(graph[k]) for k in graph}
+    graph_degrees = dict(sorted(graph_degrees.items(), key=lambda item: item[1], reverse=True))
+    top_3 = list(graph_degrees.items())[:3]
+
+    simulation_output = parallel_process_simulations(grid, args.iterations, args.workers, args.strategy)
+    # Unpack simulation output
+    (
+        all_valid_mooves, max_coverage, dead_cells, 
+        max_mooves, min_mooves, histogram, graph,
+        max_moove_sequence, max_moo_count_sequence, max_moo_count_coverage_sequence,
+        min_moove_sequence, min_moo_count_sequence, min_moo_count_coverage_sequence
+    ) = simulation_output
     
-    if args.strategy == 'beam-search':
-        mooves = generate_sequence_beam_search(
-            all_valid_mooves=all_valid_mooves, 
-            dims=grid_dimensions(grid), 
-            graph=graph, 
-            seed=42, 
-            highest_score=True,
-            beam_width=max(100, len(all_valid_mooves) // 4)
+    output = {
+        "puzzle": str(output_filepath.stem),
+        "dimensions": dims,
+        "total_cells": dims[0] * dims[1],
+        "total_valid_mooves": len(all_valid_mooves),
+        "max_coverage": max_coverage,
+        "dead_cells": dead_cells,
+        "max_mooves": max_mooves,
+        "min_mooves": min_mooves,
+        "moo_count_histogram": histogram,
+        "graph_degrees": graph_degrees,
+        "max_moove_sequence": max_moove_sequence,
+        "max_moo_count_sequence": max_moo_count_sequence,
+        "max_moo_coverage_sequence": max_moo_count_coverage_sequence,
+        "min_moove_sequence": min_moove_sequence,
+        "min_moo_count_sequence": min_moo_count_sequence,
+        "min_moo_coverage_sequence": min_moo_count_coverage_sequence,
+        "rendered_max_moove_sequence": render_moove_sequence(
+            max_moove_sequence, 
+            max_moo_count_sequence, 
+            max_moo_count_coverage_sequence
+        ),
+        "rendered_min_moove_sequence": render_moove_sequence(
+            min_moove_sequence, 
+            min_moo_count_sequence, 
+            min_moo_count_coverage_sequence
         )
-        simulation_result = simulate_board(mooves, grid_dimensions(grid))
-        board, moo_count, moove_sequence, moo_count_sequence, moo_coverage_gain_sequence = simulation_result
-        print(f"Max moo count from beam search: {moo_count}")
-        print(f"Board coverage:\n{render_board(board, grid)}")
-        print(f"Moove sequence:\n{render_moove_sequence(moove_sequence, moo_count_sequence, moo_coverage_gain_sequence)}")
-    # elif args.strategy == 'mcts':
-    #     mooves = generate_sequence_mcts(
-    #         all_valid_mooves=all_valid_mooves,
-    #         dims=grid_dimensions(grid),
-    #         graph=graph,
-    #         seed=42,
-    #         highest_score=True,
-    #         iterations=args.iterations,
-    #         exploration_constant=1.414 # sqrt(2)
-    #     )
-    #     simulation_result = simulate_board(mooves, grid_dimensions(grid))
-    #     board, moo_count, moove_sequence, moo_count_sequence, moo_coverage_gain_sequence = simulation_result
-    #     print(f"Max moo count from MCTS: {moo_count}")
-    #     print(f"Board coverage:\n{render_board(board, grid)}")
-    #     output_seq = render_moove_sequence(moove_sequence, moo_count_sequence, moo_coverage_gain_sequence)
-    #     print(f"Moove sequence:\n{output_seq}")
-    else:
-        parallel_process_simulations(grid, args.iterations, args.workers, args.strategy)
+    }
+    output_filepath.write_text(json.dumps(output, indent=2))
+
+    print(f"PUZZLE: {output_filepath.stem}")
+    print(render_moove_sequence(
+        max_moove_sequence, 
+        max_moo_count_sequence, 
+        max_moo_count_coverage_sequence
+    ))
+    print(render_moo_count_histogram(histogram, screen_width=40))
+    print(f"Max mooves: {max_mooves}, Min mooves: {min_mooves}, Max coverage: {max_coverage}, Dead cells: {dead_cells}")
+    print(f"Output written to {output_filepath}")
+
+
 
     
