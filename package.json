@@ -1,0 +1,21 @@
+{
+  "name": "moo-counter",
+  "version": "1.0.0",
+  "description": "Simulation counter of possible moos achievable in https://find-a-moo.kleeut.com/",
+  "homepage": "https://github.com/neozenith/moo-counter#readme",
+  "bugs": {
+    "url": "https://github.com/neozenith/moo-counter/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/neozenith/moo-counter.git"
+  },
+  "license": "MIT",
+  "author": "Josh Peak",
+  "type": "commonjs",
+  "main": "index.js",
+  "scripts": {
+    "start": "node nodejs/index.js",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  }
+}
