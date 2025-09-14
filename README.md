@@ -8,7 +8,7 @@
 
 Simulation counter of possible moos achievable in <https://find-a-moo.kleeut.com/>
 
-What started as a fun 15x15 find-a-word where the only word is moo turned into a fun computer science problem. 
+What started as a fun 15x15 find-a-word where the only word is `moo` turned into a fun computer science problem. 
 
 How?
 
@@ -21,7 +21,9 @@ How?
 1. You select three squares to spell the word `moo`
 2. These squares are then highlighted as "Covered" and you gain 1 Moo Point
 3. Each subsequent `moove` only gains a point **IF** 1 of the squares selected is **NOT** already covered.
-4. There are more valid `mooves` than achievable points.
+4. If you select three letters that spell `moo` and they are already covered, that scores 0 extra points and can be considered a dead scoreable word at this point in the game.
+
+**Example**
 
 In the diagram above:
 
@@ -30,6 +32,8 @@ In the diagram above:
 3. Green, Orange, Purple -> Also 3 points.
 
 As you can see, the **order matters**.
+
+There are more valid `mooves` than `achievable points`.
 
 ## The Computer Science Problem
 
