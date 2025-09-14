@@ -4,6 +4,13 @@
 <img src="moo-logo.png" width="320px" />
 </p>
 
+<p align="center">
+🐮 <a href="https://joshpeak.net/moo-counter/">Moo Mate Statistics Site</a> 🐮
+<a href="https://joshpeak.net/moo-counter/graph.html">Moo Mate Graph Visualisation</a> 🐮
+</p>
+
+
+
 ## Overview
 
 Simulation counter of possible moos achievable in <https://find-a-moo.kleeut.com/>
