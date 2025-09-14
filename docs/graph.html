@@ -1,0 +1,768 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🐮 Moo Mate - Graph Visualization 🐮</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🐮</text></svg>">
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --success-color: #27ae60;
+            --background-color: #f8f9fa;
+            --card-background: #ffffff;
+            --text-primary: #2c3e50;
+            --text-secondary: #7f8c8d;
+            --border-color: #e1e8ed;
+            --shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            color: var(--text-primary);
+        }
+
+        header {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            padding: 1.5rem 0;
+            text-align: center;
+            box-shadow: var(--shadow);
+        }
+
+        header h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+
+        nav {
+            background: white;
+            padding: 1rem;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: center;
+            gap: 1rem;
+            flex-wrap: wrap;
+        }
+
+        .tab-button {
+            padding: 0.75rem 1.5rem;
+            background: var(--background-color);
+            border: 2px solid transparent;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .tab-button:hover {
+            background: linear-gradient(135deg, #667eea20 0%, #764ba220 100%);
+            transform: translateY(-2px);
+        }
+
+        .tab-button.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: var(--secondary-color);
+        }
+
+        main {
+            flex: 1;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            max-width: 100%;
+            margin: 0 auto;
+            width: 100%;
+        }
+
+        .controls {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            display: flex;
+            gap: 1rem;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .control-button {
+            padding: 0.5rem 1rem;
+            background: var(--secondary-color);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: 500;
+            transition: all 0.2s ease;
+        }
+
+        .control-button:hover {
+            background: #2980b9;
+            transform: translateY(-1px);
+        }
+
+        .control-button:active {
+            transform: translateY(0);
+        }
+
+        .layout-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        #cy {
+            background: white;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            flex: 1;
+            min-height: 600px;
+            position: relative;
+        }
+
+        .info-panel {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            display: flex;
+            justify-content: space-around;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .info-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .info-label {
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+            margin-bottom: 0.25rem;
+        }
+
+        .info-value {
+            font-weight: 700;
+            font-size: 1.2rem;
+            color: var(--primary-color);
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            font-size: 1.5rem;
+            color: var(--text-secondary);
+            background: white;
+            padding: 2rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            z-index: 1000;
+        }
+
+        .legend {
+            background: white;
+            padding: 1rem;
+            border-radius: 8px;
+            box-shadow: var(--shadow);
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .legend-color {
+            width: 20px;
+            height: 20px;
+            border-radius: 4px;
+            border: 2px solid var(--border-color);
+        }
+
+        .back-link {
+            position: fixed;
+            bottom: 2rem;
+            right: 2rem;
+            background: var(--secondary-color);
+            color: white;
+            padding: 0.75rem 1.25rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 600;
+            box-shadow: var(--shadow);
+            transition: all 0.2s ease;
+        }
+
+        .back-link:hover {
+            background: #2980b9;
+            transform: translateY(-2px);
+        }
+
+        @media (max-width: 768px) {
+            header h1 {
+                font-size: 1.5rem;
+            }
+
+            main {
+                padding: 1rem;
+            }
+
+            .tab-button {
+                padding: 0.5rem 1rem;
+                font-size: 0.9rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>🐮 Moo Mate - Graph Visualization 🐮</h1>
+    </header>
+
+    <nav>
+        <button class="tab-button active" data-puzzle="micro">🐮 Micro (5x5)</button>
+        <button class="tab-button" data-puzzle="mini">🐮 Mini (10x10)</button>
+        <button class="tab-button" data-puzzle="maxi">🐮 Maxi (15x15)</button>
+    </nav>
+
+    <main>
+        <div class="controls">
+            <button class="control-button" id="reset-btn">Reset View</button>
+            <button class="control-button" id="fit-btn">Fit to Screen</button>
+            <button class="control-button" id="animate-btn">Animate Path</button>
+            <button class="control-button" id="toggle-edges-btn">Toggle Overlap Edges</button>
+        </div>
+
+        <div class="controls">
+            <span style="color: #666; font-weight: 600; margin-right: 10px;">Layout:</span>
+            <button class="control-button layout-btn active" data-layout="fcose">fCoSE</button>
+            <button class="control-button layout-btn" data-layout="elk">ELK</button>
+            <button class="control-button layout-btn" data-layout="cise">CiSE</button>
+            <button class="control-button layout-btn" data-layout="cola">Cola</button>
+            <button class="control-button layout-btn" data-layout="klay">Klay</button>
+            <button class="control-button layout-btn" data-layout="dagre">Dagre</button>
+            <button class="control-button layout-btn" data-layout="cose">CoSE</button>
+            <button class="control-button layout-btn" data-layout="breadthfirst">Tree</button>
+            <button class="control-button layout-btn" data-layout="circle">Circle</button>
+        </div>
+
+        <div class="legend">
+            <div class="legend-item">
+                <div class="legend-color" style="background: #27ae60; transform: rotate(45deg);"></div>
+                <span>Start</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #3498db;"></div>
+                <span>Path Node</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #95a5a6;"></div>
+                <span>Other Moves</span>
+            </div>
+            <div class="legend-item">
+                <div class="legend-color" style="background: #e74c3c; transform: rotate(45deg);"></div>
+                <span>End</span>
+            </div>
+        </div>
+
+        <div id="cy"></div>
+        <div class="loading" id="loading" style="display: none;">Loading graph...</div>
+
+        <div class="info-panel" id="info-panel">
+            <div class="info-item">
+                <span class="info-label">Total Moves</span>
+                <span class="info-value" id="total-moves">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Path Length</span>
+                <span class="info-value" id="path-length">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Coverage</span>
+                <span class="info-value" id="coverage">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Max Score</span>
+                <span class="info-value" id="max-score">-</span>
+            </div>
+            <div class="info-item">
+                <span class="info-label">Total Edges</span>
+                <span class="info-value" id="total-edges">-</span>
+            </div>
+        </div>
+    </main>
+
+    <a href="index.html" class="back-link">� Back to Stats</a>
+
+    <!-- Cytoscape.js from CDN -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cytoscape/3.27.0/cytoscape.min.js"></script>
+
+    <!-- Layout extensions -->
+    <script src="https://unpkg.com/layout-base/layout-base.js"></script>
+    <script src="https://unpkg.com/cose-base/cose-base.js"></script>
+
+    <!-- fCoSE layout -->
+    <script src="https://unpkg.com/cytoscape-fcose/cytoscape-fcose.js"></script>
+
+    <!-- ELK layout -->
+    <script src="https://unpkg.com/elkjs/lib/elk.bundled.js"></script>
+    <script src="https://unpkg.com/cytoscape-elk/dist/cytoscape-elk.js"></script>
+
+    <!-- CiSE layout -->
+    <script src="https://unpkg.com/cytoscape-cise/cytoscape-cise.js"></script>
+
+    <!-- Cola layout -->
+    <script src="https://unpkg.com/webcola/WebCola/cola.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-cola/cytoscape-cola.js"></script>
+
+    <!-- Klay layout -->
+    <script src="https://unpkg.com/klayjs/klay.js"></script>
+    <script src="https://unpkg.com/cytoscape-klay/cytoscape-klay.js"></script>
+
+    <!-- Dagre layout -->
+    <script src="https://unpkg.com/dagre/dist/dagre.min.js"></script>
+    <script src="https://unpkg.com/cytoscape-dagre/cytoscape-dagre.js"></script>
+
+    <script>
+        let cy = null;
+        let currentPuzzle = 'micro';
+        let showOverlapEdges = true;  // Show all edges by default
+        let animationTimeout = null;
+
+        // Initialize Cytoscape
+        function initCytoscape(graphData) {
+            // Clear existing graph
+            if (cy) {
+                cy.destroy();
+            }
+
+            // Remove loading message
+            document.getElementById('loading').style.display = 'none';
+
+            // Create new Cytoscape instance
+            cy = cytoscape({
+                container: document.getElementById('cy'),
+                elements: graphData.elements,
+                style: getDefaultStyle(),  // Always use default style
+                layout: {
+                    name: 'cose',
+                    animate: false,
+                    nodeDimensionsIncludeLabels: true,
+                    nodeRepulsion: 400000,
+                    idealEdgeLength: 100,
+                    edgeElasticity: 100,
+                    gravity: 80,
+                    numIter: 1000
+                },
+                wheelSensitivity: 0.2,
+                boxSelectionEnabled: false,
+                autounselectify: true
+            });
+
+            // Update info panel
+            updateInfoPanel(graphData);
+
+            // Add click handlers for nodes
+            cy.on('tap', 'node', function(evt) {
+                const node = evt.target;
+                highlightNode(node);
+            });
+        }
+
+        // Get default Cytoscape style if not provided
+        function getDefaultStyle() {
+            return [
+                {
+                    selector: 'node',
+                    style: {
+                        'label': 'data(label)',
+                        'background-color': '#666',
+                        'text-valign': 'center',
+                        'text-halign': 'center',
+                        'width': 40,
+                        'height': 40,
+                        'font-size': 11,
+                        'font-weight': 'bold',
+                        'color': '#fff',
+                        'text-outline-color': '#666',
+                        'text-outline-width': 2
+                    }
+                },
+                {
+                    selector: '.start-node',
+                    style: {
+                        'background-color': '#27ae60',
+                        'shape': 'diamond',
+                        'width': 60,
+                        'height': 60,
+                        'font-weight': 'bold',
+                        'font-size': 14
+                    }
+                },
+                {
+                    selector: '.end-node',
+                    style: {
+                        'background-color': '#e74c3c',
+                        'shape': 'diamond',
+                        'width': 60,
+                        'height': 60,
+                        'font-weight': 'bold',
+                        'font-size': 14
+                    }
+                },
+                {
+                    selector: '.path-node',
+                    style: {
+                        'background-color': '#3498db',
+                        'border-width': 3,
+                        'border-color': '#2980b9',
+                        'width': 50,
+                        'height': 50
+                    }
+                },
+                {
+                    selector: '.regular-node',
+                    style: {
+                        'background-color': '#95a5a6',
+                        'opacity': 0.7,
+                        'width': 35,
+                        'height': 35,
+                        'font-size': 10
+                    }
+                },
+                {
+                    selector: '.path-edge',
+                    style: {
+                        'line-color': '#3498db',
+                        'target-arrow-color': '#3498db',
+                        'width': 4,
+                        'curve-style': 'bezier',
+                        'target-arrow-shape': 'triangle',
+                        'label': 'data(sequence)',
+                        'text-rotation': 'autorotate',
+                        'text-margin-y': -10,
+                        'font-size': 14,
+                        'font-weight': 'bold',
+                        'color': '#2980b9',
+                        'text-outline-color': '#fff',
+                        'text-outline-width': 3
+                    }
+                },
+                {
+                    selector: '.possible-edge',
+                    style: {
+                        'line-color': '#b0b0b0',
+                        'target-arrow-color': '#b0b0b0',
+                        'width': 1.5,
+                        'opacity': 0.6,
+                        'curve-style': 'bezier',
+                        'target-arrow-shape': 'triangle',
+                        'arrow-scale': 0.7
+                    }
+                },
+                {
+                    selector: 'node.highlighted',
+                    style: {
+                        'background-color': '#f39c12',
+                        'border-color': '#e67e22',
+                        'border-width': 4,
+                        'width': 60,
+                        'height': 60,
+                        'z-index': 999
+                    }
+                },
+                {
+                    selector: 'edge.highlighted',
+                    style: {
+                        'line-color': '#f39c12',
+                        'target-arrow-color': '#f39c12',
+                        'width': 6,
+                        'z-index': 999
+                    }
+                }
+            ];
+        }
+
+        // Load graph data
+        async function loadGraph(puzzleName) {
+            const loading = document.getElementById('loading');
+            loading.style.display = 'block';
+            loading.textContent = `Loading ${puzzleName} graph...`;
+
+            try {
+                const response = await fetch(`${puzzleName}_graph.json`);
+                if (!response.ok) {
+                    throw new Error(`Failed to load ${puzzleName}_graph.json`);
+                }
+                const graphData = await response.json();
+                initCytoscape(graphData);
+            } catch (error) {
+                console.error('Error loading graph:', error);
+                loading.textContent = `Error loading graph: ${error.message}`;
+            }
+        }
+
+        // Update info panel
+        function updateInfoPanel(graphData) {
+            const nodes = graphData.elements.nodes || [];
+            const edges = graphData.elements.edges || [];
+
+            const pathNodes = nodes.filter(n => n.classes === 'path-node').length;
+            const totalNodes = nodes.filter(n => n.data.type !== 'terminal').length;
+            const endNode = nodes.find(n => n.data.id === 'end');
+            const pathEdges = edges.filter(e => e.classes === 'path-edge').length;
+            const totalEdges = edges.length;
+
+            document.getElementById('total-moves').textContent = totalNodes;
+            document.getElementById('path-length').textContent = pathNodes;
+            document.getElementById('coverage').textContent = endNode?.data?.coverage || '-';
+            document.getElementById('max-score').textContent = endNode?.data?.score || '-';
+            document.getElementById('total-edges').textContent = totalEdges;
+        }
+
+        // Highlight node
+        function highlightNode(node) {
+            cy.nodes().removeClass('highlighted');
+            node.addClass('highlighted');
+        }
+
+        // Animate path
+        function animatePath() {
+            if (animationTimeout) {
+                clearTimeout(animationTimeout);
+            }
+
+            // Reset all nodes and edges
+            cy.nodes().removeClass('highlighted');
+            cy.edges().removeClass('highlighted');
+
+            // Get path edges sorted by sequence
+            const pathEdges = cy.edges('.path-edge').sort((a, b) => {
+                return (a.data('sequence') || 0) - (b.data('sequence') || 0);
+            });
+
+            // Get start node
+            const startNode = cy.nodes('#start');
+            if (startNode.length > 0) {
+                startNode.addClass('highlighted');
+            }
+
+            // Animate each edge in sequence, keeping previous ones highlighted
+            let delay = 500;
+            pathEdges.forEach(edge => {
+                animationTimeout = setTimeout(() => {
+                    edge.addClass('highlighted');
+                    const target = edge.target();
+                    target.addClass('highlighted');
+                }, delay);
+                delay += 500;
+            });
+        }
+
+        // Tab switching
+        document.querySelectorAll('.tab-button').forEach(button => {
+            button.addEventListener('click', function() {
+                // Update active tab
+                document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                // Load new graph
+                currentPuzzle = this.dataset.puzzle;
+                loadGraph(currentPuzzle);
+            });
+        });
+
+        // Control buttons
+        document.getElementById('reset-btn').addEventListener('click', () => {
+            if (cy) {
+                cy.reset();
+                cy.fit();
+            }
+        });
+
+        document.getElementById('fit-btn').addEventListener('click', () => {
+            if (cy) {
+                cy.fit();
+            }
+        });
+
+        document.getElementById('animate-btn').addEventListener('click', animatePath);
+
+        document.getElementById('toggle-edges-btn').addEventListener('click', () => {
+            if (cy) {
+                showOverlapEdges = !showOverlapEdges;
+                if (showOverlapEdges) {
+                    cy.edges('.possible-edge').style('display', 'element');
+                } else {
+                    cy.edges('.possible-edge').style('display', 'none');
+                }
+            }
+        });
+
+        // Function to apply a new layout with animation
+        function applyLayout(layoutName) {
+            if (!cy) return;
+
+            let layoutOptions = {
+                name: layoutName,
+                animate: true,
+                animationDuration: 1000,
+                animationEasing: 'ease-in-out',
+                fit: true,
+                padding: 30
+            };
+
+            // Add specific options for different layouts
+            switch(layoutName) {
+                case 'fcose':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        quality: 'default',
+                        randomize: false,
+                        nodeRepulsion: 4500,
+                        idealEdgeLength: 100,
+                        edgeElasticity: 0.45,
+                        nestingFactor: 0.1,
+                        gravity: 0.25,
+                        numIter: 2500,
+                        tile: true
+                    };
+                    break;
+                case 'elk':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        elk: {
+                            algorithm: 'layered',
+                            'elk.direction': 'DOWN',
+                            'elk.layered.spacing.nodeNodeBetweenLayers': 100,
+                            'elk.spacing.nodeNode': 80
+                        }
+                    };
+                    break;
+                case 'cise':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        nodeSeparation: 12.5,
+                        idealInterClusterEdgeLengthCoefficient: 1.4,
+                        allowNodesInsideCircle: false,
+                        maxRatioOfNodesInsideCircle: 0.1,
+                        springCoeff: 0.45,
+                        nodeRepulsion: 4500,
+                        gravity: 0.25
+                    };
+                    break;
+                case 'cola':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        nodeSpacing: 50,
+                        edgeLengthVal: 100,
+                        randomize: false,
+                        flow: { axis: 'y', minSeparation: 30 }
+                    };
+                    break;
+                case 'klay':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        klay: {
+                            direction: 'DOWN',
+                            layoutHierarchy: true,
+                            intCoordinates: true,
+                            edgeRouting: 'ORTHOGONAL',
+                            edgeSpacingFactor: 0.5,
+                            inLayerSpacingFactor: 2.0,
+                            nodeLayering: 'NETWORK_SIMPLEX',
+                            nodePlacement: 'BRANDES_KOEPF',
+                            fixedAlignment: 'BALANCED'
+                        }
+                    };
+                    break;
+                case 'dagre':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        rankDir: 'TB',
+                        rankSep: 100,
+                        nodeSep: 80,
+                        edgeSep: 10,
+                        ranker: 'network-simplex'
+                    };
+                    break;
+                case 'cose':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        nodeDimensionsIncludeLabels: true,
+                        nodeRepulsion: 400000,
+                        idealEdgeLength: 100,
+                        edgeElasticity: 100,
+                        gravity: 80,
+                        numIter: 1000
+                    };
+                    break;
+                case 'breadthfirst':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        directed: true,
+                        roots: '#start',
+                        spacingFactor: 1.5
+                    };
+                    break;
+                case 'circle':
+                    layoutOptions = {
+                        ...layoutOptions,
+                        avoidOverlap: true,
+                        radius: 300
+                    };
+                    break;
+            }
+
+            const layout = cy.layout(layoutOptions);
+            layout.run();
+        }
+
+        // Layout switching buttons
+        document.querySelectorAll('.layout-btn').forEach(button => {
+            button.addEventListener('click', function() {
+                // Update active state
+                document.querySelectorAll('.layout-btn').forEach(b => b.classList.remove('active'));
+                this.classList.add('active');
+
+                // Apply the new layout
+                const layoutName = this.dataset.layout;
+                applyLayout(layoutName);
+            });
+        });
+
+        // Load initial graph
+        loadGraph(currentPuzzle);
+    </script>
+</body>
+</html>

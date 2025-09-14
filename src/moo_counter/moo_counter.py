@@ -507,6 +507,253 @@ def generate_sequence_greedily(
         iteration += 1
     return moove_sequence
 
+def generate_cytoscape_graph(
+    all_valid_mooves: MooveSequence,
+    graph: MooveOverlapGraph,
+    max_moove_sequence: MooveSequence,
+    max_moo_count_sequence: MooveCountSequence,
+    max_moo_coverage_sequence: MooveCoverageGainSequence,
+    dims: GridDimensions
+) -> dict:
+    """Generate Cytoscape.js compatible graph data for visualization.
+
+    Creates a graph with:
+    - START and END terminal nodes
+    - All valid mooves as nodes
+    - Path edges showing the max_moove_sequence
+    - Possible edges showing other connections
+    """
+    nodes = []
+    edges = []
+
+    # Create node IDs for all mooves
+    def moove_to_id(moove: Moove) -> str:
+        """Convert a moove to a unique ID."""
+        t1, _, _ = moove
+        direction = determine_direction_from_moove(moove)
+        arrow = render_direction_arrow(direction)
+        return f"{chr(t1[0] + 65)}_{t1[1]+1}_{arrow}"
+
+    # Add START node
+    nodes.append({
+        "data": {
+            "id": "start",
+            "label": "START",
+            "type": "terminal"
+        },
+        "classes": "start-node"
+    })
+
+    # Add all moove nodes
+    moove_to_node_map = {}
+    for moove in all_valid_mooves:
+        node_id = moove_to_id(moove)
+        moove_to_node_map[moove] = node_id
+
+        # Check if this moove is in the max sequence
+        in_path = moove in max_moove_sequence
+
+        nodes.append({
+            "data": {
+                "id": node_id,
+                "label": render_moove(moove).strip("'"),
+                "degree": len(graph.get(moove, [])),
+                "position": {"row": moove[0][0], "col": moove[0][1]},
+                "in_path": in_path
+            },
+            "classes": "path-node" if in_path else "regular-node"
+        })
+
+    # Add END node
+    total_coverage = sum(max_moo_coverage_sequence) if max_moo_coverage_sequence else 0
+    nodes.append({
+        "data": {
+            "id": "end",
+            "label": "END",
+            "type": "terminal",
+            "coverage": total_coverage,
+            "score": len(max_moove_sequence)
+        },
+        "classes": "end-node"
+    })
+
+    # Add path edges for max_moove_sequence
+    if max_moove_sequence:
+        # Edge from START to first moove
+        first_moove_id = moove_to_node_map[max_moove_sequence[0]]
+        edges.append({
+            "data": {
+                "id": f"start_to_{first_moove_id}",
+                "source": "start",
+                "target": first_moove_id,
+                "sequence": 0,
+                "coverage_gain": max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0,
+                "total_coverage": max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0,
+                "moo_count": 1
+            },
+            "classes": "path-edge"
+        })
+
+        # Edges between consecutive mooves in the sequence
+        total_coverage = max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0
+        for i in range(len(max_moove_sequence) - 1):
+            source_id = moove_to_node_map[max_moove_sequence[i]]
+            target_id = moove_to_node_map[max_moove_sequence[i + 1]]
+            coverage_gain = max_moo_coverage_sequence[i + 1] if i + 1 < len(max_moo_coverage_sequence) else 0
+            total_coverage += coverage_gain
+
+            edges.append({
+                "data": {
+                    "id": f"{source_id}_to_{target_id}",
+                    "source": source_id,
+                    "target": target_id,
+                    "sequence": i + 1,
+                    "coverage_gain": coverage_gain,
+                    "total_coverage": total_coverage,
+                    "moo_count": max_moo_count_sequence[i + 1] if i + 1 < len(max_moo_count_sequence) else 0
+                },
+                "classes": "path-edge"
+            })
+
+        # Edge from last moove to END
+        last_moove_id = moove_to_node_map[max_moove_sequence[-1]]
+        edges.append({
+            "data": {
+                "id": f"{last_moove_id}_to_end",
+                "source": last_moove_id,
+                "target": "end",
+                "sequence": len(max_moove_sequence),
+                "coverage_gain": 0,
+                "total_coverage": total_coverage,
+                "moo_count": max_moo_count_sequence[-1] if max_moo_count_sequence else 0
+            },
+            "classes": "path-edge"
+        })
+
+    # Add ALL possible edges based on the overlap graph (but not part of the path)
+    max_moove_set = set(max_moove_sequence)
+
+    for moove1, overlapping_mooves in graph.items():
+        source_id = moove_to_node_map[moove1]
+
+        for moove2 in overlapping_mooves:
+            # Skip if this edge is part of the path
+            if moove1 in max_moove_set and moove2 in max_moove_set:
+                idx1 = max_moove_sequence.index(moove1) if moove1 in max_moove_sequence else -1
+                idx2 = max_moove_sequence.index(moove2) if moove2 in max_moove_sequence else -1
+                if abs(idx1 - idx2) == 1:
+                    continue
+
+            target_id = moove_to_node_map[moove2]
+            edge_id = f"{source_id}_overlap_{target_id}"
+
+            # Only add if not already added (avoid duplicates)
+            if not any(e["data"]["id"] == edge_id for e in edges):
+                edges.append({
+                    "data": {
+                        "id": edge_id,
+                        "source": source_id,
+                        "target": target_id
+                    },
+                    "classes": "possible-edge"
+                })
+
+    # Create the complete Cytoscape data structure
+    cytoscape_data = {
+        "elements": {
+            "nodes": nodes,
+            "edges": edges
+        },
+        "style": [
+            {
+                "selector": "node",
+                "style": {
+                    "label": "data(label)",
+                    "background-color": "#666",
+                    "text-valign": "center",
+                    "text-halign": "center",
+                    "width": 30,
+                    "height": 30,
+                    "font-size": 10
+                }
+            },
+            {
+                "selector": ".start-node",
+                "style": {
+                    "background-color": "#27ae60",
+                    "shape": "diamond",
+                    "width": 50,
+                    "height": 50,
+                    "font-weight": "bold"
+                }
+            },
+            {
+                "selector": ".end-node",
+                "style": {
+                    "background-color": "#e74c3c",
+                    "shape": "diamond",
+                    "width": 50,
+                    "height": 50,
+                    "font-weight": "bold"
+                }
+            },
+            {
+                "selector": ".path-node",
+                "style": {
+                    "background-color": "#3498db",
+                    "border-width": 3,
+                    "border-color": "#2980b9"
+                }
+            },
+            {
+                "selector": ".regular-node",
+                "style": {
+                    "background-color": "#95a5a6",
+                    "opacity": 0.7
+                }
+            },
+            {
+                "selector": ".path-edge",
+                "style": {
+                    "line-color": "#3498db",
+                    "target-arrow-color": "#3498db",
+                    "width": 4,
+                    "curve-style": "bezier",
+                    "target-arrow-shape": "triangle",
+                    "label": "data(sequence)",
+                    "text-rotation": "autorotate",
+                    "text-margin-y": -10,
+                    "font-size": 12,
+                    "font-weight": "bold"
+                }
+            },
+            {
+                "selector": ".possible-edge",
+                "style": {
+                    "line-color": "#333",
+                    "width": 1,
+                    "line-style": "dashed",
+                    "opacity": 0.3
+                }
+            }
+        ],
+        "layout": {
+            "name": "cose",
+            "animate": False,
+            "nodeDimensionsIncludeLabels": True,
+            "nodeRepulsion": 400000,
+            "idealEdgeLength": 100,
+            "edgeElasticity": 100,
+            "nestingFactor": 5,
+            "gravity": 80,
+            "numIter": 1000,
+            "componentSpacing": 100
+        }
+    }
+
+    return cytoscape_data
+
+
 def generate_sequence_mcts(
         all_valid_mooves: MooveSequence,
         dims: GridDimensions,
@@ -824,15 +1071,30 @@ if __name__ == "__main__":
     }
     output_filepath.write_text(json.dumps(output, indent=2))
 
+    # Generate Cytoscape graph data
+    cytoscape_data = generate_cytoscape_graph(
+        all_valid_mooves,
+        graph,
+        max_moove_sequence,
+        max_moo_count_sequence,
+        max_moo_count_coverage_sequence,
+        dims
+    )
+
+    # Write Cytoscape graph to separate file
+    cytoscape_filepath = output_filepath.with_name(f"{output_filepath.stem}_graph.json")
+    cytoscape_filepath.write_text(json.dumps(cytoscape_data, indent=2))
+
     print(f"PUZZLE: {output_filepath.stem}")
     print(render_moove_sequence(
-        max_moove_sequence, 
-        max_moo_count_sequence, 
+        max_moove_sequence,
+        max_moo_count_sequence,
         max_moo_count_coverage_sequence
     ))
     print(render_moo_count_histogram(histogram, screen_width=40))
     print(f"Max mooves: {max_mooves}, Min mooves: {min_mooves}, Max coverage: {max_coverage}, Dead cells: {dead_cells}")
     print(f"Output written to {output_filepath}")
+    print(f"Cytoscape graph written to {cytoscape_filepath}")
 
 
 

@@ -10,9 +10,26 @@ page: daily
 	cp docs/index.html site/index.html
 	cp docs/styles.css site/styles.css
 	cp docs/script.js site/script.js
+	cp docs/graph.html site/graph.html
+
+	cp output/*-micro.json docs/micro.json
+	cp output/*-mini.json docs/mini.json
+	cp output/*-maxi.json docs/maxi.json
+
+	cp output/*-micro_graph.json docs/micro_graph.json
+	cp output/*-mini_graph.json docs/mini_graph.json
+	cp output/*-maxi_graph.json docs/maxi_graph.json
+
 	cp output/*-micro.json site/micro.json
 	cp output/*-mini.json site/mini.json
 	cp output/*-maxi.json site/maxi.json
+
+	cp output/*-micro_graph.json site/micro_graph.json
+	cp output/*-mini_graph.json site/mini_graph.json
+	cp output/*-maxi_graph.json site/maxi_graph.json
+
+docs-local: 
+	uv run -m http.server --directory docs 8000
 
 site-local: page
 	uv run -m http.server --directory site 8000

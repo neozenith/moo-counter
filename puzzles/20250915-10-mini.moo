@@ -1,0 +1,10 @@
+ooommmmomm
+mmmommoomo
+oooooommoo
+oooomoomoo
+ommmmomooo
+mooomooooo
+momoomoooo
+moooomommo
+oooommmomo
+omoooooooo
