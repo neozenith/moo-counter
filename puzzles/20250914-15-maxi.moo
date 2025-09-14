@@ -1,0 +1,15 @@
+ooommoomoomommm
+moooooooomoooom
+oooooooomoomomm
+omooommommomooo
+omoooomooommmoo
+omoomoooooomomm
+mooooooomoommoo
+omomooommmooooo
+ommmomoommoooom
+oomomoooomommoo
+oooomomoomomoom
+oooomomommmommm
+mmooooomomomooo
+oomooooommooomm
+mmomoooooomoooo

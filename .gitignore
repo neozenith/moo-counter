@@ -9,3 +9,5 @@ __pycache__/
 *.json
 output/
 !package.json
+
+site/
