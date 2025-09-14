@@ -9,7 +9,7 @@ page: daily
 	
 	cp docs/index.html site/index.html
 	cp docs/styles.css site/styles.css
-	cp docs/scripts.js site/scripts.js
+	cp docs/script.js site/script.js
 	cp output/*-micro.json site/micro.json
 	cp output/*-mini.json site/mini.json
 	cp output/*-maxi.json site/maxi.json
