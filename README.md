@@ -1,65 +1,61 @@
 # Moo Counter 🐮
 
+<p align="center">
+<img src="moo-logo.png" width="320px" />
+</p>
+
+## Overview
+
 Simulation counter of possible moos achievable in <https://find-a-moo.kleeut.com/>
+
+What started as a fun 15x15 find-a-word where the only word is moo turned into a fun computer science problem. 
+
+How?
+
+## Scoring rules:
+
+<p align="center">
+<img src="moo-rules.png" width="320px" />
+</p>
+
+1. You select three squares to spell the word `moo`
+2. These squares are then highlighted as "Covered" and you gain 1 Moo Point
+3. Each subsequent `moove` only gains a point **IF** 1 of the squares selected is **NOT** already covered.
+4. There are more valid `mooves` than achievable points.
+
+In the diagram above:
+
+1. Purple, Orange, Green -> Scores only 2 points.
+2. Purple, Green, Orange -> Scores 3 points.
+3. Green, Orange, Purple -> Also 3 points.
+
+As you can see, the **order matters**.
+
+## The Computer Science Problem
+
+Turns out this is both a:
+
+1. [Set Cover Problem](https://en.wikipedia.org/wiki/Set_cover_problem) and a
+2. [Bin Packing Problem](https://en.wikipedia.org/wiki/Bin_packing_problem)
+
+Where:
+
+- You have a finite resource: the squares that get consumed with each move.
+
+- You want to find the sequence of mooves that maximise your score and minimise your coverage consumption.
+
+## Goal
 
 I wanted to simulate for a given puzzle:
 - What is the theoretical maximum?
 - What is the median?
 
-**USAGE:**
+So I run 10k-100k simulations with different algorithmic strategies for generating the optimal sequence.
 
-```sh
-usage: moo_counter.py [-h] [--puzzle PUZZLE] [--iterations ITERATIONS]
+- Random shuffle
+- Greedy (Both finding highest and lowest)
+- [Monte Carlo Tree Search (MCTS)](https://en.wikipedia.org/wiki/Monte_Carlo_tree_search)
 
-Moo Counter
-
-options:
-  -h, --help            show this help message and exit
-  --puzzle PUZZLE       Path to the puzzle file
-  --iterations ITERATIONS
-                        Number of iterations for random sampling
-```
-
-Eg:
-
-```sh
-uv run src/moo_counter/moo_counter.py --puzzle 20250910-puzzle.moo
-```
-
-Example output:
-
-```sh
-Moo count 103:  3
-Moo count 104:  5
-Moo count 105:  42
-Moo count 106:  309
-Moo count 107:  1300
-Moo count 108:  4581
-Moo count 109: 🐮 13618
-Moo count 110: 🐮🐮🐮 34884
-Moo count 111: 🐮🐮🐮🐮🐮🐮 76016
-Moo count 112: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 143040
-Moo count 113: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 231502
-Moo count 114: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 328803
-Moo count 115: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 402089
-Moo count 116: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 435431
-Moo count 117: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 410109
-Moo count 118: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 341110
-Moo count 119: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 249493
-Moo count 120: 🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮🐮 159704
-Moo count 121: 🐮🐮🐮🐮🐮🐮🐮🐮 90640
-Moo count 122: 🐮🐮🐮🐮 45582
-Moo count 123: 🐮 20193
-Moo count 124:  7705
-Moo count 125:  2717
-Moo count 126:  868
-Moo count 127:  199
-Moo count 128:  42
-Moo count 129:  11
-Moo count 130:  2
-Moo count 131:  1
-Moo count 132:  1
-Total valid 'moo' moves found: 172
-Theoretical maximum moo count: 132 after 3000000 iterations
-Total time taken: 135.74s
-```
+<p align="center">
+<img src="output.png" />
+</p>
