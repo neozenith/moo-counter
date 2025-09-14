@@ -21,7 +21,7 @@ How?
 1. You select three squares to spell the word `moo`
 2. These squares are then highlighted as "Covered" and you gain 1 Moo Point
 3. Each subsequent `moove` only gains a point **IF** 1 of the squares selected is **NOT** already covered.
-4. If you select three letters that spell `moo` and they are already covered, that scores 0 extra points and can be considered a dead scoreable word at this point in the game.
+4. If you select three letters that spell `moo` and they are already covered, that scores 0 extra points and can be considered a dead `moove` at this point in the game.
 
 **Example**
 
