@@ -1,8 +1,11 @@
-daily:
+daily-micro: .venv/deps
 	uv run src/moo_counter/moo_counter.py --puzzle micro --strategy greedy-high  --iterations 100
+daily-mini: .venv/deps
 	uv run src/moo_counter/moo_counter.py --puzzle mini --strategy greedy-high  --iterations 1000
+daily-maxi: .venv/deps
 	uv run src/moo_counter/moo_counter.py --puzzle maxi --strategy greedy-high  --iterations 10000
 
+daily:	daily-micro daily-mini daily-maxi
 
 page: daily
 	mkdir -p site
@@ -28,6 +31,22 @@ page: daily
 	cp output/*-mini_graph.json site/mini_graph.json
 	cp output/*-maxi_graph.json site/maxi_graph.json
 
+ghpages:
+	mkdir -p site
+	
+	cp docs/index.html site/index.html
+	cp docs/styles.css site/styles.css
+	cp docs/script.js site/script.js
+	cp docs/graph.html site/graph.html
+
+	cp output/*-micro.json site/micro.json
+	cp output/*-mini.json site/mini.json
+	cp output/*-maxi.json site/maxi.json
+
+	cp output/*-micro_graph.json site/micro_graph.json
+	cp output/*-mini_graph.json site/mini_graph.json
+	cp output/*-maxi_graph.json site/maxi_graph.json
+
 docs-local: 
 	uv run -m http.server --directory docs 8000
 
@@ -37,8 +56,13 @@ site-local: page
 ######################################################################
 # SETUP
 ######################################################################
-.venv/deps: .venv pyproject.toml
+.venv: pyproject.toml
 	uv sync --all-groups
+	uvx playwright install chromium-headless-shell --only-shell
+
+# Create a "touch file" as a single target 
+# when the output of a prior target was many files.
+.venv/deps: .venv
 	touch $@
 
 
@@ -71,4 +95,5 @@ clean:
 	rm -rf .*_cache
 	rm -rf .coverage
 
-.PHONY: format check test docs build diag clean publish publish-test docs-install docs-serve docs-build docs-deploy docs-clean daily page
+.PHONY: format check test docs build clean \
+		daily-micro daily-mini daily-maxi daily page
