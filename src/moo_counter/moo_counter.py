@@ -1026,6 +1026,7 @@ if __name__ == "__main__":
         dims = grid_dimensions(grid)
         output_filepath = (OUTPUT_DIR / f"{pathlib.Path(args.puzzle).name}").with_suffix(".json")
     
+    print(render_board(generate_empty_board(dims), grid))
     all_valid_mooves = generate_all_valid_mooves(grid)
     graph = generate_overlaps_graph(all_valid_mooves)
     graph_degrees = {render_moove(k):len(graph[k]) for k in graph}
