@@ -66,6 +66,7 @@ def fetch_live_puzzle_input(size: str) -> str:
         browser = p.chromium.launch()
         page = browser.new_page()
         page.goto(url)
+        page.wait_for_load_state("networkidle")
         content = page.locator("body > pre").inner_text()
         browser.close()
     return content.replace(" ", "")
