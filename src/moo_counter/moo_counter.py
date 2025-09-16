@@ -17,6 +17,7 @@ import sys
 import os
 import time
 from multiprocessing import Pool
+import math
 
 from playwright.sync_api import sync_playwright
 
@@ -1001,6 +1002,32 @@ def generate_sequence_mcts(
     return sequence
 
 
+def nth_permutation(elements, n):
+    """
+    Get the nth permutation of elements directly without iteration.
+    n is 0-indexed.
+    """
+
+    elements = list(elements)
+    k = len(elements)
+
+    # Check bounds
+    if n >= math.factorial(k):
+        raise ValueError(f"Index {n} out of range for {k} elements")
+
+    result = []
+    available = elements.copy()
+
+    # Convert n to factorial number system
+    for i in range(k, 0, -1):
+        factorial = math.factorial(i - 1)
+        index = n // factorial
+        n = n % factorial
+
+        result.append(available.pop(index))
+
+    return result
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Moo Counter")
     parser.add_argument("--puzzle", type=str, help="Path to the puzzle file")
@@ -1097,7 +1124,4 @@ if __name__ == "__main__":
     print(f"Max mooves: {max_mooves}, Min mooves: {min_mooves}, Max coverage: {max_coverage}, Dead cells: {dead_cells}")
     print(f"Output written to {output_filepath}")
     print(f"Cytoscape graph written to {cytoscape_filepath}")
-
-
-
     
