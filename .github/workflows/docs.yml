@@ -40,8 +40,20 @@ jobs:
           name: web-artifact
           path: ./site
 
-  micro:
+  puzzle:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - name: micro
+            size: 5
+            iterations: 100
+          - name: mini
+            size: 10
+            iterations: 1000
+          - name: maxi
+            size: 15
+            iterations: 10000
     steps:
       - uses: actions/checkout@v4
       - uses: astral-sh/setup-uv@v4
@@ -53,77 +65,25 @@ jobs:
         run: |
           uv sync
           uv run playwright install --with-deps
-      - name: Run daily micro
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/${{ env.PUZZLE_DATE }}-5-micro.moo --strategy greedy-high  --iterations 100
+
+      - name: Run daily ${{ matrix.name }}
+        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/${{ env.PUZZLE_DATE }}-${{ matrix.size }}-${{ matrix.name }}.moo --strategy greedy-high  --iterations ${{ matrix.iterations }}
 
       - name: Copy outputs to site directory
         run: |
           mkdir -p site
-          cp output/*-micro.json site/micro.json
-          cp output/*-micro_graph.json site/micro_graph.json
-      - name: Upload micro artifact
+          cp output/*-${{ matrix.name }}.json site/${{ matrix.name }}.json
+          cp output/*-${{ matrix.name }}_graph.json site/${{ matrix.name }}_graph.json
+
+      - name: Upload ${{ matrix.name }} artifact
         uses: actions/upload-artifact@v4
         with:
-          name: micro-artifact
-          path: ./site
-
-  mini:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
-
-      - name: Install dependencies and playwright browsers
-        run: |
-          uv sync
-          uv run playwright install --with-deps
-      - name: Run daily mini
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/${{ env.PUZZLE_DATE }}-10-mini.moo --strategy greedy-high  --iterations 1000
-
-      - name: Copy outputs to site directory
-        run: |
-          mkdir -p site
-          cp output/*-mini.json site/mini.json
-          cp output/*-mini_graph.json site/mini_graph.json
-      - name: Upload mini artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: mini-artifact
-          path: ./site
-
-  maxi:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version-file: .python-version
-      - name: Install dependencies and playwright browsers
-        run: |
-          uv sync
-          uv run playwright install --with-deps
-      - name: Run daily maxi
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/${{ env.PUZZLE_DATE }}-15-maxi.moo --strategy greedy-high  --iterations 10000
-
-      - name: Copy outputs to site directory
-        run: |
-          mkdir -p site
-          cp output/*-maxi.json site/maxi.json
-          cp output/*-maxi_graph.json site/maxi_graph.json
-
-      - name: Upload maxi artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: maxi-artifact
+          name: ${{ matrix.name }}-artifact
           path: ./site
 
   combine:
     runs-on: ubuntu-latest
-    needs: [web, micro, mini, maxi]
+    needs: [web, puzzle]
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
