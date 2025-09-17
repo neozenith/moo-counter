@@ -51,7 +51,7 @@ jobs:
           uv sync
           uv run playwright install --with-deps
       - name: Run daily micro
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/20250917-5-micro.moo --strategy greedy-high  --iterations 100
+        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/20250918-5-micro.moo --strategy greedy-high  --iterations 100
 
       - name: Copy outputs to site directory
         run: |
@@ -78,7 +78,7 @@ jobs:
           uv sync
           uv run playwright install --with-deps
       - name: Run daily mini
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/20250917-10-mini.moo --strategy greedy-high  --iterations 1000
+        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/20250918-10-mini.moo --strategy greedy-high  --iterations 1000
 
       - name: Copy outputs to site directory
         run: |
@@ -104,7 +104,7 @@ jobs:
           uv sync
           uv run playwright install --with-deps
       - name: Run daily maxi
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/20250917-15-maxi.moo --strategy greedy-high  --iterations 10000
+        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/20250918-15-maxi.moo --strategy greedy-high  --iterations 10000
 
       - name: Copy outputs to site directory
         run: |
