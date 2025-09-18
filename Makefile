@@ -1,9 +1,9 @@
 daily-micro: .venv/deps
-	uv run src/moo_counter/moo_counter.py --puzzle micro --strategy greedy-high  --iterations 100
+	uv run -m moo_counter --puzzle micro --strategy greedy-high  --iterations 100
 daily-mini: .venv/deps
-	uv run src/moo_counter/moo_counter.py --puzzle mini --strategy greedy-high  --iterations 1000
+	uv run -m moo_counter --puzzle mini --strategy greedy-high  --iterations 1000
 daily-maxi: .venv/deps
-	uv run src/moo_counter/moo_counter.py --puzzle maxi --strategy greedy-high  --iterations 10000
+	uv run -m moo_counter --puzzle maxi --strategy greedy-high  --iterations 10000
 
 daily:	daily-micro daily-mini daily-maxi
 

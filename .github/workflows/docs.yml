@@ -67,7 +67,7 @@ jobs:
           uv run playwright install --with-deps
 
       - name: Run daily ${{ matrix.name }}
-        run: uv run src/moo_counter/moo_counter.py --puzzle puzzles/${{ env.PUZZLE_DATE }}-${{ matrix.size }}-${{ matrix.name }}.moo --strategy greedy-high  --iterations ${{ matrix.iterations }}
+        run: uv run -m moo_counter --puzzle puzzles/${{ env.PUZZLE_DATE }}-${{ matrix.size }}-${{ matrix.name }}.moo --strategy greedy-high  --iterations ${{ matrix.iterations }}
 
       - name: Copy outputs to site directory
         run: |
