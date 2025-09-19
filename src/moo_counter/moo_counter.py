@@ -14,7 +14,7 @@ import pathlib
 
 # Import from refactored modules
 from .moo_types import VALID_SIZES
-from .engine import EngineFactory, PythonEngine
+from .engine import EngineFactory
 from .display import (
     render_board, render_moove_sequence, render_moo_count_histogram,
     generate_cytoscape_graph
@@ -68,12 +68,15 @@ def main():
         help="Strategy for generating moove sequences (default: all)"
     )
 
+    # Get available engines dynamically
+    available_engines = EngineFactory.list_engines()
+
     parser.add_argument(
         "--engine",
         type=str,
         default="python",
-        choices=["python"],  # Add more as they become available
-        help="Game engine to use (default: python)"
+        choices=available_engines,
+        help=f"Game engine to use. Available: {', '.join(available_engines)} (default: python)"
     )
 
     parser.add_argument(
@@ -126,10 +129,10 @@ def main():
         print("Running engine benchmark...")
         print(f"{'='*50}")
 
-        engines = {"python": PythonEngine()}
-        # Add more engines as they become available
-        # engines["rust"] = RustEngine()
-        # engines["c"] = CEngine()
+        # Get all available engines
+        engines = {}
+        for engine_name in EngineFactory.list_engines():
+            engines[engine_name] = EngineFactory.get_engine(engine_name)
 
         benchmark_results = benchmark_engines(
             engines, grid, args.iterations, args.workers, args.strategy
@@ -248,9 +251,10 @@ def main():
         print("Comparing engine implementations...")
         print(f"{'='*50}")
 
-        # For now, just show the Python engine
-        # In the future, this will compare Python vs Rust vs C
-        engines = {"python": PythonEngine()}
+        # Compare all available engines
+        engines = {}
+        for engine_name in EngineFactory.list_engines():
+            engines[engine_name] = EngineFactory.get_engine(engine_name)
 
         for name, eng in engines.items():
             print(f"\n{name} engine:")

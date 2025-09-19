@@ -287,3 +287,27 @@ class EngineFactory:
 
 # Register default Python engine
 EngineFactory.register_engine("python", PythonEngine())
+
+# Try to register Rust engine
+try:
+    from .engines.wrappers import RustEngineWrapper
+    # Try to instantiate to see if the underlying engine is available
+    try:
+        engine = RustEngineWrapper()
+        EngineFactory.register_engine("rust", engine)
+    except ImportError:
+        pass  # Rust engine not built yet
+except ImportError:
+    pass  # Wrapper not available
+
+# Try to register Cython engine
+try:
+    from .engines.wrappers import CythonEngineWrapper
+    # Try to instantiate to see if the underlying engine is available
+    try:
+        engine = CythonEngineWrapper()
+        EngineFactory.register_engine("cython", engine)
+    except ImportError:
+        pass  # Cython engine not built yet
+except ImportError:
+    pass  # Wrapper not available

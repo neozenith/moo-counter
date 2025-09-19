@@ -12,3 +12,13 @@ output/
 
 site/
 CLAUDE.md
+*.egg-info
+target/
+
+
+build/
+src/moo_counter/engines/*.c
+src/moo_counter/engines/*.so
+src/moo_counter/engines/*.pyd
+src/moo_counter/engines/build/
+src/**/*.so
