@@ -311,3 +311,15 @@ try:
         pass  # Cython engine not built yet
 except ImportError:
     pass  # Wrapper not available
+
+# Try to register C engine
+try:
+    from .engines.wrappers import CEngineWrapper
+    # Try to instantiate to see if the underlying engine is available
+    try:
+        engine = CEngineWrapper()
+        EngineFactory.register_engine("c", engine)
+    except ImportError:
+        pass  # C engine not built yet
+except ImportError:
+    pass  # Wrapper not available

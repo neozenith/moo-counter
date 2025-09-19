@@ -84,14 +84,21 @@ build-cython: .venv/deps
 test-engine-cython: .venv/deps build-cython
 	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine cython
 
+# Build C engine (builds together with Cython since they share setup.py)
+build-c: .venv/deps
+	cd src/moo_counter/engines && uv run python setup.py build_ext --inplace
+
+test-engine-c: .venv/deps build-c
+	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine c
+
 # Build all engines
-build-engines: build-rust build-cython
+build-engines: build-rust build-cython build-c
 
 # Clean build artifacts
 clean-engines:
 	rm -rf target/
 	rm -rf build/
-	rm -rf src/moo_counter/engines/*.c
+	rm -rf src/moo_counter/engines/cython_*.c
 	rm -rf src/moo_counter/engines/*.so
 	rm -rf src/moo_counter/engines/*.pyd
 	rm -rf src/moo_counter/engines/build/
@@ -103,6 +110,7 @@ test-engines: .venv/deps build-engines
 	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine python
 	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine rust
 	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine cython
+	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine c
 	
 # Benchmark all engines
 benchmark-engines: .venv/deps
@@ -154,5 +162,6 @@ clean: clean-engines
 
 .PHONY: format check test test-engine-registration docs build clean clean-engines \
 		daily-micro daily-mini daily-maxi daily page \
-		build-rust build-cython build-engines test-engines \
+		build-rust build-cython build-c build-engines test-engines \
+		test-engine-rust test-engine-cython test-engine-c \
 		benchmark-engines compare-engines
