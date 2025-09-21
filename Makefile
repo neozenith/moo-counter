@@ -1,11 +1,26 @@
-daily-micro: .venv/deps
-	uv run -m moo_counter --puzzle micro --strategy greedy-high  --iterations 100
-daily-mini: .venv/deps
-	uv run -m moo_counter --puzzle mini --strategy greedy-high  --iterations 1000
-daily-maxi: .venv/deps
-	uv run -m moo_counter --puzzle maxi --strategy greedy-high  --iterations 10000
+######################################################################
+# SETUP
+######################################################################
+.venv: pyproject.toml
+	uv sync --all-groups
+	uvx playwright install
 
-daily:	daily-micro daily-mini daily-maxi test test-engines
+# Create a "touch file" as a single target
+# when the output of a prior target was many files.
+.venv/deps: .venv
+	touch $@
+
+######################################################################
+# WEBSITE
+######################################################################
+daily-micro: .venv/deps .venv/build-engines
+	uv run -m moo_counter --puzzle micro --strategy greedy-high  --iterations 100 --engine python
+daily-mini: .venv/deps .venv/build-engines
+	uv run -m moo_counter --puzzle mini --strategy greedy-high  --iterations 1000 --engine python
+daily-maxi: .venv/deps .venv/build-engines
+	uv run -m moo_counter --puzzle maxi --strategy greedy-high  --iterations 10000 --engine python
+
+daily:	daily-micro daily-mini daily-maxi 
 
 page: daily
 	mkdir -p site
@@ -53,46 +68,11 @@ docs-local:
 site-local: page
 	uv run -m http.server --directory site 8000
 
-######################################################################
-# SETUP
-######################################################################
-.venv: pyproject.toml
-	uv sync --all-groups
-	uvx playwright install chromium-headless-shell --only-shell
 
-# Create a "touch file" as a single target
-# when the output of a prior target was many files.
-.venv/deps: .venv
-	touch $@
 
 ######################################################################
 # ENGINE BUILDING
 ######################################################################
-
-# Build Rust engine with maturin
-build-rust: .venv/deps
-	uvx maturin develop --release
-	cp target/release/libmoo_counter_rust.dylib src/moo_counter_rust.so
-
-test-engine-rust: .venv/deps build-rust
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine rust
-
-# Build Cython engine
-build-cython: .venv/deps
-	cd src/moo_counter/engines && uv run python setup.py build_ext --inplace
-
-test-engine-cython: .venv/deps build-cython
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine cython
-
-# Build C engine (builds together with Cython since they share setup.py)
-build-c: .venv/deps
-	cd src/moo_counter/engines && uv run python setup.py build_ext --inplace
-
-test-engine-c: .venv/deps build-c
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine c
-
-# Build all engines
-build-engines: build-rust build-cython build-c
 
 # Clean build artifacts
 clean-engines:
@@ -105,20 +85,47 @@ clean-engines:
 	find . -name "*.so" -delete
 	find . -name "*.pyd" -delete
 
+# Build Rust engine with maturin
+build-rust: .venv/deps
+	uvx maturin develop --release
+	cp target/release/libmoo_counter_rust.dylib src/moo_counter/engines/rust_engine.so
+
+# Build Cython engine
+build-cython: .venv/deps
+	cd src/moo_counter/engines && uv run python setup.py build_ext --inplace
+
+# Build C engine (builds together with Cython since they share setup.py)
+build-c: .venv/deps
+	cd src/moo_counter/engines && uv run python setup.py build_ext --inplace
+
+# Build all engines
+build-engines: .venv/build-engines
+.venv/build-engines: build-rust build-cython build-c
+	touch $@
+
+
+test-engine-python: .venv/deps
+	uv run -m moo_counter --puzzle micro --strategy random --iterations 10 --engine python
+
+test-engine-rust: .venv/deps build-rust
+	uv run -m moo_counter --puzzle micro --strategy random --iterations 10 --engine rust
+	
+test-engine-cython: .venv/deps build-cython
+	uv run -m moo_counter --puzzle micro --strategy random --iterations 10 --engine cython
+	
+test-engine-c: .venv/deps build-c
+	uv run -m moo_counter --puzzle micro --strategy random --iterations 10 --engine c
+
 # Test all engines
-test-engines: .venv/deps build-engines
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine python
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine rust
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine cython
-	uv run -m moo_counter --puzzle micro --strategy greedy-high --iterations 10 --engine c
+test-engines: .venv/deps test-engine-python test-engine-rust test-engine-cython test-engine-c
 	
 # Benchmark all engines
 benchmark-engines: .venv/deps
-	uv run python -m moo_counter.moo_counter --puzzle mini --benchmark --strategy greedy-high --iterations 10000
+	uv run -m moo_counter.moo_counter --puzzle mini --benchmark --strategy random --iterations 10000
 
 # Compare all engines side-by-side
 compare-engines: .venv/deps
-	uv run python -m moo_counter.moo_counter --puzzle maxi --strategy greedy-high --compare-engines --iterations 10000
+	uv run -m moo_counter.moo_counter --puzzle maxi --strategy random --compare-engines --iterations 10000
 
 
 ######################################################################
@@ -126,7 +133,7 @@ compare-engines: .venv/deps
 ######################################################################
 docs:
 	uvx --from md-toc md_toc --in-place github --header-levels 2 *.md
-	uvx rumdl check . --fix --respect-gitignore -d MD013,MD033 --exclude docs/api/*.md
+	uvx rumdl check . --fix --respect-gitignore -d MD013,MD033,MD036 --exclude docs/api/*.md
 
 ######################################################################
 # QUALITY ASSURANCE
@@ -134,7 +141,8 @@ docs:
 
 format: .venv/deps docs
 	uvx ruff format src/ --respect-gitignore --line-length 120
-	uvx isort src/ --profile 'black'
+	uvx isort src/
+	uvx isort src/moo_counter/engines/cython_engine.pyx
 
 check: .venv/deps format
 	uvx ruff check src/
@@ -144,11 +152,6 @@ check: .venv/deps format
 # Run minimal test suite
 test: .venv/deps test-engines
 	uv run pytest tests/ -v --tb=short
-
-# Run specific test for engine debugging
-test-engine-registration: .venv/deps
-	uv run pytest tests/test_engine_registration.py -v --tb=short
-
 
 clean: clean-engines
 	rm -rf dist

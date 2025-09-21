@@ -1,29 +1,36 @@
 """Parallel simulation management for Moo Counter."""
 
+# Standard Library
 import os
 import time
+from collections.abc import Mapping
 from multiprocessing import Pool
-from typing import Mapping
 
-from .moo_types import (
-    Grid, GridDimensions, MooveSequence, MooveOverlapGraph,
-    SimulationResult
-)
-from .engine import GameEngine, PythonEngine
-from .strategies import create_strategy
 from .analysis import build_moo_count_histogram
+from .engine import EngineFactory, GameEngine
+from .moo_types import (
+    Grid,
+    GridDimensions,
+    MooveOverlapGraph,
+    MooveSequence,
+    SimulationResult,
+)
+from .strategies import create_strategy
+from .engines.wrappers import PythonEngine, CythonEngineWrapper, RustEngineWrapper, CEngineWrapper
 
+
+EngineFactory.register_engine("python", PythonEngine())
+EngineFactory.register_engine("cython", CythonEngineWrapper())
+EngineFactory.register_engine("rust", RustEngineWrapper())
+EngineFactory.register_engine("c", CEngineWrapper())
 
 def worker_simulate(args: tuple[int, MooveSequence, GridDimensions, MooveOverlapGraph, str, str]) -> SimulationResult:
     """Worker function that generates and simulates a random permutation."""
     seed, all_valid_mooves, dims, graph, strategy_name, engine_name = args
 
     # Create engine and strategy for this worker
-    # For now, only Python engine is available
-    if engine_name == "python":
-        engine = PythonEngine()
-    else:
-        engine = PythonEngine()  # Default to Python
+    # Use EngineFactory to get the correct engine implementation
+    engine = EngineFactory.get_engine(engine_name)
 
     strategy = create_strategy(strategy_name, engine, seed)
     sequence = strategy.generate_sequence(all_valid_mooves, dims, graph)
@@ -37,13 +44,7 @@ class ParallelSimulator:
     def __init__(self, engine: GameEngine):
         self.engine = engine
 
-    def run_simulations(
-        self,
-        grid: Grid,
-        iterations: int,
-        workers: int,
-        strategy: str
-    ) -> dict:
+    def run_simulations(self, grid: Grid, iterations: int, workers: int, strategy: str) -> dict:
         """Run multiple simulations in parallel and return results."""
 
         # Prepare data
@@ -64,8 +65,7 @@ class ParallelSimulator:
 
         # Create worker arguments (pass engine name instead of engine object)
         worker_args = [
-            (i, all_valid_mooves, dims, graph, strategy, self.engine.name.lower())
-            for i in range(iterations)
+            (i, all_valid_mooves, dims, graph, strategy, self.engine.name.lower()) for i in range(iterations)
         ]
 
         # Determine number of processes
@@ -78,18 +78,16 @@ class ParallelSimulator:
         time_sims_start = time.time()
 
         with Pool(num_processes) as pool:
-            results_iter = pool.imap_unordered(
-                worker_simulate,
-                worker_args,
-                chunksize=optimal_chunksize
-            )
+            results_iter = pool.imap_unordered(worker_simulate, worker_args, chunksize=optimal_chunksize)
             all_simulations: list[SimulationResult] = list(results_iter)
 
         time_parallel_end = time.time()
         time_parallel_duration = time_parallel_end - time_sims_start
 
-        print(f"Simulations complete took {time_parallel_duration:.2f}s, "
-              f"({iterations / time_parallel_duration:.0f} simulations per second)")
+        print(
+            f"Simulations complete took {time_parallel_duration:.2f}s, "
+            f"({iterations / time_parallel_duration:.0f} simulations per second)"
+        )
 
         # Process results
         all_moo_counts = [result.moo_count for result in all_simulations]
@@ -108,8 +106,10 @@ class ParallelSimulator:
         time_reduce_end = time.time()
         time_reduce_duration = time_reduce_end - time_parallel_end
 
-        print(f"Result processing took {time_reduce_duration:.2f}s after "
-              f"{time_parallel_duration:.2f}s of parallel simulation.")
+        print(
+            f"Result processing took {time_reduce_duration:.2f}s after "
+            f"{time_parallel_duration:.2f}s of parallel simulation."
+        )
 
         total_time = time.time() - time_start
         total_sims_time = time.time() - time_sims_start
@@ -128,7 +128,7 @@ class ParallelSimulator:
             "histogram": histogram,
             "graph": graph,
             "dims": dims,
-            "all_simulations": all_simulations
+            "all_simulations": all_simulations,
         }
 
 
@@ -137,7 +137,7 @@ def benchmark_engines(
     grid: Grid,
     iterations: int = 100,
     workers: int = -1,
-    strategy: str = "greedy-high"
+    strategy: str = "greedy-high",
 ) -> dict[str, dict]:
     """Benchmark multiple engines with parallel simulations."""
 
@@ -160,7 +160,7 @@ def benchmark_engines(
             "max_score": sim_results["max_result"].moo_count,
             "min_score": sim_results["min_result"].moo_count,
             "histogram": sim_results["histogram"],
-            "simulations_per_second": iterations / duration
+            "simulations_per_second": iterations / duration,
         }
 
         print(f"{name} engine completed in {duration:.2f}s")
@@ -172,8 +172,10 @@ def benchmark_engines(
     print(f"{'='*50}")
 
     for name, result in results.items():
-        print(f"{name:15} - {result['simulations_per_second']:.0f} sims/sec, "
-              f"Max: {result['max_score']}, Min: {result['min_score']}")
+        print(
+            f"{name:15} - {result['simulations_per_second']:.0f} sims/sec, "
+            f"Max: {result['max_score']}, Min: {result['min_score']}"
+        )
 
     # Find fastest
     fastest = min(results.items(), key=lambda x: x[1]["duration"])

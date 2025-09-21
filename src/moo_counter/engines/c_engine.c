@@ -32,6 +32,44 @@ static bool is_valid_position(int row, int col, int rows, int cols) {
     return row >= 0 && row < rows && col >= 0 && col < cols;
 }
 
+// Helper function to check if a moove spells 'moo' on the grid
+static bool check_moo_letters(PyObject* grid, int start_row, int start_col, int dir_idx) {
+    if (!PyList_Check(grid)) return false;
+
+    int dr = DIRECTIONS[dir_idx][0];
+    int dc = DIRECTIONS[dir_idx][1];
+
+    // Check first position for 'm'
+    PyObject* row1 = PyList_GetItem(grid, start_row);
+    if (!row1) return false;
+    PyObject* cell1 = PyList_GetItem(row1, start_col);
+    if (!cell1) return false;
+    const char* str1 = PyUnicode_AsUTF8(cell1);
+    if (!str1 || str1[0] != 'm') return false;
+
+    // Check second position for 'o'
+    int r2 = start_row + dr;
+    int c2 = start_col + dc;
+    PyObject* row2 = PyList_GetItem(grid, r2);
+    if (!row2) return false;
+    PyObject* cell2 = PyList_GetItem(row2, c2);
+    if (!cell2) return false;
+    const char* str2 = PyUnicode_AsUTF8(cell2);
+    if (!str2 || str2[0] != 'o') return false;
+
+    // Check third position for 'o'
+    int r3 = start_row + 2 * dr;
+    int c3 = start_col + 2 * dc;
+    PyObject* row3 = PyList_GetItem(grid, r3);
+    if (!row3) return false;
+    PyObject* cell3 = PyList_GetItem(row3, c3);
+    if (!cell3) return false;
+    const char* str3 = PyUnicode_AsUTF8(cell3);
+    if (!str3 || str3[0] != 'o') return false;
+
+    return true;
+}
+
 // Helper function to get cell positions for a moove
 static PyObject* get_moove_cells(int start_row, int start_col, int dir_idx, int rows, int cols) {
     PyObject* cells = PyList_New(0);
@@ -81,23 +119,29 @@ static PyObject* CEngine_generate_moove_str(CEngine* self, PyObject* args) {
     return PyUnicode_FromFormat("'%c, %d %s'", col_letter, row_num, dir_symbol);
 }
 
-// Method: is_valid_moove
+// Method: is_valid_moove - now checks grid letters
 static PyObject* CEngine_is_valid_moove(CEngine* self, PyObject* args) {
     int start_row, start_col, dir_idx, rows, cols;
-    if (!PyArg_ParseTuple(args, "iiiii", &start_row, &start_col, &dir_idx, &rows, &cols)) {
+    PyObject* grid;
+    if (!PyArg_ParseTuple(args, "iiiiiO", &start_row, &start_col, &dir_idx, &rows, &cols, &grid)) {
         return NULL;
     }
 
     int dr = DIRECTIONS[dir_idx][0];
     int dc = DIRECTIONS[dir_idx][1];
 
-    // Check all three cells
+    // Check all three cells are in bounds
     for (int i = 0; i < 3; i++) {
         int r = start_row + i * dr;
         int c = start_col + i * dc;
         if (!is_valid_position(r, c, rows, cols)) {
             Py_RETURN_FALSE;
         }
+    }
+
+    // Check if it spells 'moo'
+    if (!check_moo_letters(grid, start_row, start_col, dir_idx)) {
+        Py_RETURN_FALSE;
     }
 
     Py_RETURN_TRUE;
@@ -113,12 +157,29 @@ static PyObject* CEngine_get_moove_cells_method(CEngine* self, PyObject* args) {
     return get_moove_cells(start_row, start_col, dir_idx, rows, cols);
 }
 
-// Method: generate_all_valid_mooves
+// Method: generate_all_valid_mooves - now checks grid letters
 static PyObject* CEngine_generate_all_valid_mooves(CEngine* self, PyObject* args) {
-    int rows, cols;
-    if (!PyArg_ParseTuple(args, "ii", &rows, &cols)) {
+    PyObject* grid;
+    if (!PyArg_ParseTuple(args, "O", &grid)) {
         return NULL;
     }
+
+    if (!PyList_Check(grid)) {
+        PyErr_SetString(PyExc_TypeError, "grid must be a list");
+        return NULL;
+    }
+
+    Py_ssize_t rows = PyList_Size(grid);
+    if (rows == 0) {
+        return PyList_New(0);
+    }
+
+    PyObject* first_row = PyList_GetItem(grid, 0);
+    if (!PyList_Check(first_row)) {
+        PyErr_SetString(PyExc_TypeError, "grid must be a list of lists");
+        return NULL;
+    }
+    Py_ssize_t cols = PyList_Size(first_row);
 
     PyObject* mooves = PyList_New(0);
     if (!mooves) return NULL;
@@ -126,10 +187,21 @@ static PyObject* CEngine_generate_all_valid_mooves(CEngine* self, PyObject* args
     for (int row = 0; row < rows; row++) {
         for (int col = 0; col < cols; col++) {
             for (int dir_idx = 0; dir_idx < 8; dir_idx++) {
-                PyObject* is_valid = CEngine_is_valid_moove(self,
-                    Py_BuildValue("iiiii", row, col, dir_idx, rows, cols));
+                // Check if all positions are in bounds
+                bool valid = true;
+                int dr = DIRECTIONS[dir_idx][0];
+                int dc = DIRECTIONS[dir_idx][1];
 
-                if (is_valid == Py_True) {
+                for (int i = 0; i < 3; i++) {
+                    int r = row + i * dr;
+                    int c = col + i * dc;
+                    if (!is_valid_position(r, c, rows, cols)) {
+                        valid = false;
+                        break;
+                    }
+                }
+
+                if (valid && check_moo_letters(grid, row, col, dir_idx)) {
                     PyObject* moove_tuple = Py_BuildValue("(iii)", row, col, dir_idx);
                     if (!moove_tuple) {
                         Py_DECREF(mooves);
@@ -138,7 +210,6 @@ static PyObject* CEngine_generate_all_valid_mooves(CEngine* self, PyObject* args
                     PyList_Append(mooves, moove_tuple);
                     Py_DECREF(moove_tuple);
                 }
-                Py_XDECREF(is_valid);
             }
         }
     }

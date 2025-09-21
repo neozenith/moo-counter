@@ -85,6 +85,7 @@ Based on typical performance characteristics:
 - **Rust Engine**: 5-20x faster than Python (especially with parallel processing)
 
 Actual performance will vary based on:
+
 - Puzzle size
 - Number of valid moves
 - CPU cores available (Rust engine uses parallel processing)
@@ -107,17 +108,20 @@ make test-engines
 ## Implementation Details
 
 ### Python Engine
+
 - Pure Python implementation
 - Easy to modify and debug
 - Good for algorithm development
 
 ### Rust Engine
+
 - Uses PyO3 for Python bindings
 - Parallel processing with Rayon
 - Memory-efficient data structures
 - Best for production workloads
 
 ### Cython Engine
+
 - C-level performance with Python-like syntax
 - Compile-time optimizations
 - Good balance of performance and maintainability

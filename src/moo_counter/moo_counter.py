@@ -8,23 +8,34 @@
 # ///
 """Moo Counter - Refactored main entry point."""
 
-import argparse
+# Standard Library
 import json
 import pathlib
 
-# Import from refactored modules
-from .moo_types import VALID_SIZES
-from .engine import EngineFactory
-from .display import (
-    render_board, render_moove_sequence, render_moo_count_histogram,
-    generate_cytoscape_graph
-)
-from .utils import (
-    grid_from_live, grid_from_file, save_puzzle, get_output_filename
-)
-from .parallel import ParallelSimulator, benchmark_engines
 from .analysis import analyze_graph_degrees, get_top_overlapping_mooves
+from .cli import parse_arguments
+from .display import (
+    generate_cytoscape_graph,
+    render_board,
+    render_moo_count_histogram,
+    render_moove_sequence,
+)
+from .engine import EngineFactory
+from .moo_types import VALID_SIZES
+from .parallel import ParallelSimulator, benchmark_engines
+from .utils import get_output_filename, grid_from_file, grid_from_live, save_puzzle
 
+from .engines.wrappers import RustEngineWrapper, CythonEngineWrapper, CEngineWrapper  # , CFullEngineWrapper
+from .engines import PythonEngine
+
+# Register default Python engine
+EngineFactory.register_engine("python", PythonEngine())
+EngineFactory.register_engine("cython", CythonEngineWrapper())
+EngineFactory.register_engine("rust", RustEngineWrapper())
+EngineFactory.register_engine("c", CEngineWrapper())
+# EngineFactory.register_engine("c-full", CFullEngineWrapper())
+
+print("Registered engines:", EngineFactory.list_engines())
 
 # Project paths
 PROJECT_ROOT = pathlib.Path(__file__).parent.parent.parent
@@ -35,63 +46,12 @@ OUTPUT_PUZZLES_DIR = PROJECT_ROOT / "puzzles"
 OUTPUT_PUZZLES_DIR.mkdir(exist_ok=True, parents=True)
 
 
-def main():
+def main() -> None:
     """Main entry point for Moo Counter."""
-    parser = argparse.ArgumentParser(description="Moo Counter - Find optimal 'moo' sequences")
-
-    parser.add_argument(
-        "--puzzle",
-        type=str,
-        required=True,
-        help="Path to puzzle file or size (micro/mini/maxi) for live puzzle"
-    )
-
-    parser.add_argument(
-        "--iterations",
-        type=int,
-        default=1000,
-        help="Number of iterations for simulation (default: 1000)"
-    )
-
-    parser.add_argument(
-        "--workers",
-        type=int,
-        default=-1,
-        help="Number of worker processes (-1 for auto, default: -1)"
-    )
-
-    parser.add_argument(
-        "--strategy",
-        type=str,
-        default="all",
-        choices=["random", "greedy-high", "greedy-low", "greedy", "mcts", "all"],
-        help="Strategy for generating moove sequences (default: all)"
-    )
-
     # Get available engines dynamically
     available_engines = EngineFactory.list_engines()
-
-    parser.add_argument(
-        "--engine",
-        type=str,
-        default="python",
-        choices=available_engines,
-        help=f"Game engine to use. Available: {', '.join(available_engines)} (default: python)"
-    )
-
-    parser.add_argument(
-        "--benchmark",
-        action="store_true",
-        help="Run benchmark comparison of all available engines"
-    )
-
-    parser.add_argument(
-        "--compare-engines",
-        action="store_true",
-        help="Compare different engine implementations"
-    )
-
-    args = parser.parse_args()
+    print("Available engines:", available_engines)
+    args = parse_arguments(available_engines)
 
     # Get engine
     engine = EngineFactory.get_engine(args.engine)
@@ -134,9 +94,7 @@ def main():
         for engine_name in EngineFactory.list_engines():
             engines[engine_name] = EngineFactory.get_engine(engine_name)
 
-        benchmark_results = benchmark_engines(
-            engines, grid, args.iterations, args.workers, args.strategy
-        )
+        benchmark_results = benchmark_engines(engines, grid, args.iterations, args.workers, args.strategy)
 
         # Save benchmark results
         benchmark_file = output_filepath.with_name(f"{output_filepath.stem}_benchmark.json")
@@ -180,21 +138,15 @@ def main():
         ],  # Convert Moove to tuple for JSON
         "max_moo_count_sequence": max_result.moo_count_sequence,
         "max_moo_coverage_sequence": max_result.moo_coverage_gain_sequence,
-        "min_moove_sequence": [
-            (m.t1, m.t2, m.t3) for m in min_result.moove_sequence
-        ],
+        "min_moove_sequence": [(m.t1, m.t2, m.t3) for m in min_result.moove_sequence],
         "min_moo_count_sequence": min_result.moo_count_sequence,
         "min_moo_coverage_sequence": min_result.moo_coverage_gain_sequence,
         "rendered_max_moove_sequence": render_moove_sequence(
-            max_result.moove_sequence,
-            max_result.moo_count_sequence,
-            max_result.moo_coverage_gain_sequence
+            max_result.moove_sequence, max_result.moo_count_sequence, max_result.moo_coverage_gain_sequence
         ),
         "rendered_min_moove_sequence": render_moove_sequence(
-            min_result.moove_sequence,
-            min_result.moo_count_sequence,
-            min_result.moo_coverage_gain_sequence
-        )
+            min_result.moove_sequence, min_result.moo_count_sequence, min_result.moo_coverage_gain_sequence
+        ),
     }
 
     # Save main output
@@ -207,7 +159,7 @@ def main():
         max_result.moove_sequence,
         max_result.moo_count_sequence,
         max_result.moo_coverage_gain_sequence,
-        dims
+        dims,
     )
 
     cytoscape_filepath = output_filepath.with_name(f"{output_filepath.stem}_graph.json")
@@ -221,11 +173,11 @@ def main():
     print(f"Engine: {engine.name}")
     print()
     print("Best sequence found:")
-    print(render_moove_sequence(
-        max_result.moove_sequence,
-        max_result.moo_count_sequence,
-        max_result.moo_coverage_gain_sequence
-    ))
+    print(
+        render_moove_sequence(
+            max_result.moove_sequence, max_result.moo_count_sequence, max_result.moo_coverage_gain_sequence
+        )
+    )
 
     print("\nScore distribution:")
     print(render_moo_count_histogram(histogram, screen_width=40))

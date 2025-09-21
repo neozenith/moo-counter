@@ -9,17 +9,15 @@
 <a href="https://joshpeak.net/moo-counter/graph.html">Moo Mate Graph Visualisation</a> 🐮
 </p>
 
-
-
 ## Overview
 
 Simulation counter of possible moos achievable in <https://find-a-moo.kleeut.com/>
 
-What started as a fun 15x15 find-a-word where the only word is `moo` turned into a fun computer science problem. 
+What started as a fun 15x15 find-a-word where the only word is `moo` turned into a fun computer science problem.
 
 How?
 
-## Scoring rules:
+## Scoring rules
 
 <p align="center">
 <img src="moo-rules.png" width="320px" />
@@ -58,6 +56,7 @@ Where:
 ## Goal
 
 I wanted to simulate for a given puzzle:
+
 - What is the theoretical maximum?
 - What is the median?
 

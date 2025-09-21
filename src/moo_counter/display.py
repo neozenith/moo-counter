@@ -1,9 +1,16 @@
 """Display and rendering functions for Moo Counter."""
 
 from .moo_types import (
-    BoardState, Grid, Moove, MooveSequence, MooveCountSequence,
-    MooveCoverageGainSequence, MooCountHistogram, Direction,
-    DIRECTION_ARROWS, DIRECTION_MAPPING
+    DIRECTION_ARROWS,
+    DIRECTION_MAPPING,
+    BoardState,
+    Direction,
+    Grid,
+    MooCountHistogram,
+    Moove,
+    MooveCountSequence,
+    MooveCoverageGainSequence,
+    MooveSequence,
 )
 
 
@@ -48,14 +55,14 @@ def render_moove(moove: Moove) -> str:
 def render_moove_sequence(
     moove_sequence: MooveSequence,
     moo_count_sequence: MooveCountSequence,
-    moo_coverage_sequence: MooveCoverageGainSequence
+    moo_coverage_sequence: MooveCoverageGainSequence,
 ) -> str:
     """Render a sequence of mooves with statistics."""
     accumulative_coverage = 0
     output = "mooves:      # Moove Number, Moo Count, Coverage Gain, Accumulative Coverage Gain\n"
 
     for i, (moove, moo_count, moo_coverage_gain) in enumerate(
-        zip(moove_sequence, moo_count_sequence, moo_coverage_sequence)
+        zip(moove_sequence, moo_count_sequence, moo_coverage_sequence, strict=True)
     ):
         t1, _, _ = moove
         accumulative_coverage += moo_coverage_gain
@@ -84,7 +91,7 @@ def render_moo_count_histogram(histogram: MooCountHistogram, screen_width: int =
 
     for key, value in histogram.items():
         scaled_bar_length = int((value / max_stars) * screen_width)
-        bar = '🐮' * scaled_bar_length
+        bar = "🐮" * scaled_bar_length
         output += f"Moo count {key}: {bar} {value}\n"
 
     return output
@@ -96,7 +103,7 @@ def generate_cytoscape_graph(
     max_moove_sequence: MooveSequence,
     max_moo_count_sequence: MooveCountSequence,
     max_moo_coverage_sequence: MooveCoverageGainSequence,
-    dims: tuple[int, int]
+    dims: tuple[int, int],
 ) -> dict:
     """Generate Cytoscape.js compatible graph data for visualization.
 
@@ -117,14 +124,7 @@ def generate_cytoscape_graph(
         return f"{chr(t1[0] + 65)}_{t1[1]+1}_{arrow}"
 
     # Add START node
-    nodes.append({
-        "data": {
-            "id": "start",
-            "label": "START",
-            "type": "terminal"
-        },
-        "classes": "start-node"
-    })
+    nodes.append({"data": {"id": "start", "label": "START", "type": "terminal"}, "classes": "start-node"})
 
     # Add all moove nodes
     moove_to_node_map = {}
@@ -134,46 +134,52 @@ def generate_cytoscape_graph(
 
         in_path = moove in max_moove_sequence
 
-        nodes.append({
-            "data": {
-                "id": node_id,
-                "label": render_moove(moove).strip("'"),
-                "degree": len(graph.get(moove, [])),
-                "position": {"row": moove[0][0], "col": moove[0][1]},
-                "in_path": in_path
-            },
-            "classes": "path-node" if in_path else "regular-node"
-        })
+        nodes.append(
+            {
+                "data": {
+                    "id": node_id,
+                    "label": render_moove(moove).strip("'"),
+                    "degree": len(graph.get(moove, [])),
+                    "position": {"row": moove[0][0], "col": moove[0][1]},
+                    "in_path": in_path,
+                },
+                "classes": "path-node" if in_path else "regular-node",
+            }
+        )
 
     # Add END node
     total_coverage = sum(max_moo_coverage_sequence) if max_moo_coverage_sequence else 0
-    nodes.append({
-        "data": {
-            "id": "end",
-            "label": "END",
-            "type": "terminal",
-            "coverage": total_coverage,
-            "score": len(max_moove_sequence)
-        },
-        "classes": "end-node"
-    })
+    nodes.append(
+        {
+            "data": {
+                "id": "end",
+                "label": "END",
+                "type": "terminal",
+                "coverage": total_coverage,
+                "score": len(max_moove_sequence),
+            },
+            "classes": "end-node",
+        }
+    )
 
     # Add path edges for max_moove_sequence
     if max_moove_sequence:
         # Edge from START to first moove
         first_moove_id = moove_to_node_map[max_moove_sequence[0]]
-        edges.append({
-            "data": {
-                "id": f"start_to_{first_moove_id}",
-                "source": "start",
-                "target": first_moove_id,
-                "sequence": 0,
-                "coverage_gain": max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0,
-                "total_coverage": max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0,
-                "moo_count": 1
-            },
-            "classes": "path-edge"
-        })
+        edges.append(
+            {
+                "data": {
+                    "id": f"start_to_{first_moove_id}",
+                    "source": "start",
+                    "target": first_moove_id,
+                    "sequence": 0,
+                    "coverage_gain": max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0,
+                    "total_coverage": max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0,
+                    "moo_count": 1,
+                },
+                "classes": "path-edge",
+            }
+        )
 
         # Edges between consecutive mooves
         total_coverage = max_moo_coverage_sequence[0] if max_moo_coverage_sequence else 0
@@ -183,33 +189,37 @@ def generate_cytoscape_graph(
             coverage_gain = max_moo_coverage_sequence[i + 1] if i + 1 < len(max_moo_coverage_sequence) else 0
             total_coverage += coverage_gain
 
-            edges.append({
-                "data": {
-                    "id": f"{source_id}_to_{target_id}",
-                    "source": source_id,
-                    "target": target_id,
-                    "sequence": i + 1,
-                    "coverage_gain": coverage_gain,
-                    "total_coverage": total_coverage,
-                    "moo_count": max_moo_count_sequence[i + 1] if i + 1 < len(max_moo_count_sequence) else 0
-                },
-                "classes": "path-edge"
-            })
+            edges.append(
+                {
+                    "data": {
+                        "id": f"{source_id}_to_{target_id}",
+                        "source": source_id,
+                        "target": target_id,
+                        "sequence": i + 1,
+                        "coverage_gain": coverage_gain,
+                        "total_coverage": total_coverage,
+                        "moo_count": max_moo_count_sequence[i + 1] if i + 1 < len(max_moo_count_sequence) else 0,
+                    },
+                    "classes": "path-edge",
+                }
+            )
 
         # Edge from last moove to END
         last_moove_id = moove_to_node_map[max_moove_sequence[-1]]
-        edges.append({
-            "data": {
-                "id": f"{last_moove_id}_to_end",
-                "source": last_moove_id,
-                "target": "end",
-                "sequence": len(max_moove_sequence),
-                "coverage_gain": 0,
-                "total_coverage": total_coverage,
-                "moo_count": max_moo_count_sequence[-1] if max_moo_count_sequence else 0
-            },
-            "classes": "path-edge"
-        })
+        edges.append(
+            {
+                "data": {
+                    "id": f"{last_moove_id}_to_end",
+                    "source": last_moove_id,
+                    "target": "end",
+                    "sequence": len(max_moove_sequence),
+                    "coverage_gain": 0,
+                    "total_coverage": total_coverage,
+                    "moo_count": max_moo_count_sequence[-1] if max_moo_count_sequence else 0,
+                },
+                "classes": "path-edge",
+            }
+        )
 
     # Add possible edges based on overlap graph
     max_moove_set = set(max_moove_sequence)
@@ -228,21 +238,13 @@ def generate_cytoscape_graph(
             edge_id = f"{source_id}_overlap_{target_id}"
 
             if not any(e["data"]["id"] == edge_id for e in edges):
-                edges.append({
-                    "data": {
-                        "id": edge_id,
-                        "source": source_id,
-                        "target": target_id
-                    },
-                    "classes": "possible-edge"
-                })
+                edges.append(
+                    {"data": {"id": edge_id, "source": source_id, "target": target_id}, "classes": "possible-edge"}
+                )
 
     # Create complete Cytoscape data structure with styling
     return {
-        "elements": {
-            "nodes": nodes,
-            "edges": edges
-        },
+        "elements": {"nodes": nodes, "edges": edges},
         "style": _get_cytoscape_styles(),
         "layout": {
             "name": "cose",
@@ -254,8 +256,8 @@ def generate_cytoscape_graph(
             "nestingFactor": 5,
             "gravity": 80,
             "numIter": 1000,
-            "componentSpacing": 100
-        }
+            "componentSpacing": 100,
+        },
     }
 
 
@@ -271,8 +273,8 @@ def _get_cytoscape_styles() -> list[dict]:
                 "text-halign": "center",
                 "width": 30,
                 "height": 30,
-                "font-size": 10
-            }
+                "font-size": 10,
+            },
         },
         {
             "selector": ".start-node",
@@ -281,8 +283,8 @@ def _get_cytoscape_styles() -> list[dict]:
                 "shape": "diamond",
                 "width": 50,
                 "height": 50,
-                "font-weight": "bold"
-            }
+                "font-weight": "bold",
+            },
         },
         {
             "selector": ".end-node",
@@ -291,24 +293,14 @@ def _get_cytoscape_styles() -> list[dict]:
                 "shape": "diamond",
                 "width": 50,
                 "height": 50,
-                "font-weight": "bold"
-            }
+                "font-weight": "bold",
+            },
         },
         {
             "selector": ".path-node",
-            "style": {
-                "background-color": "#3498db",
-                "border-width": 3,
-                "border-color": "#2980b9"
-            }
+            "style": {"background-color": "#3498db", "border-width": 3, "border-color": "#2980b9"},
         },
-        {
-            "selector": ".regular-node",
-            "style": {
-                "background-color": "#95a5a6",
-                "opacity": 0.7
-            }
-        },
+        {"selector": ".regular-node", "style": {"background-color": "#95a5a6", "opacity": 0.7}},
         {
             "selector": ".path-edge",
             "style": {
@@ -321,16 +313,11 @@ def _get_cytoscape_styles() -> list[dict]:
                 "text-rotation": "autorotate",
                 "text-margin-y": -10,
                 "font-size": 12,
-                "font-weight": "bold"
-            }
+                "font-weight": "bold",
+            },
         },
         {
             "selector": ".possible-edge",
-            "style": {
-                "line-color": "#333",
-                "width": 1,
-                "line-style": "dashed",
-                "opacity": 0.3
-            }
-        }
+            "style": {"line-color": "#333", "width": 1, "line-style": "dashed", "opacity": 0.3},
+        },
     ]

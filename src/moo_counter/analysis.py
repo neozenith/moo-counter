@@ -1,12 +1,12 @@
 """Analysis functions for simulation results."""
 
+# Standard Library
 import math
+from statistics import mean, median, stdev
 from typing import Any
 
-from .moo_types import (
-    MooveCountSequence, MooCountHistogram, Moove, MooveSequence
-)
 from .display import render_moove
+from .moo_types import MooCountHistogram, Moove, MooveCountSequence, MooveSequence
 
 
 def build_moo_count_histogram(all_moo_counts: MooveCountSequence) -> MooCountHistogram:
@@ -19,33 +19,22 @@ def build_moo_count_histogram(all_moo_counts: MooveCountSequence) -> MooCountHis
             moo_count_histogram[count] = 1
 
     # Sort by keys
-    moo_count_histogram = {
-        k: moo_count_histogram[k]
-        for k in sorted(moo_count_histogram.keys())
-    }
+    moo_count_histogram = {k: moo_count_histogram[k] for k in sorted(moo_count_histogram.keys())}
 
     return moo_count_histogram
 
 
 def analyze_graph_degrees(graph: dict[Moove, set[Moove]]) -> dict[str, int]:
     """Analyze the degree distribution of the moove overlap graph."""
-    graph_degrees = {
-        render_moove(k): len(graph[k])
-        for k in graph
-    }
+    graph_degrees = {render_moove(k): len(graph[k]) for k in graph}
 
     # Sort by degree (descending)
-    graph_degrees = dict(
-        sorted(graph_degrees.items(), key=lambda item: item[1], reverse=True)
-    )
+    graph_degrees = dict(sorted(graph_degrees.items(), key=lambda item: item[1], reverse=True))
 
     return graph_degrees
 
 
-def get_top_overlapping_mooves(
-    graph: dict[Moove, set[Moove]],
-    n: int = 3
-) -> list[tuple[str, int]]:
+def get_top_overlapping_mooves(graph: dict[Moove, set[Moove]], n: int = 3) -> list[tuple[str, int]]:
     """Get the top n mooves with the most overlaps."""
     graph_degrees = analyze_graph_degrees(graph)
     return list(graph_degrees.items())[:n]
@@ -54,43 +43,30 @@ def get_top_overlapping_mooves(
 def calculate_statistics(moo_counts: MooveCountSequence) -> dict[str, float]:
     """Calculate statistical measures for moo counts."""
     if not moo_counts:
-        return {
-            "mean": 0,
-            "median": 0,
-            "std_dev": 0,
-            "min": 0,
-            "max": 0,
-            "range": 0
-        }
+        return {"mean": 0, "median": 0, "std_dev": 0, "min": 0, "max": 0, "range": 0}
 
     n = len(moo_counts)
-    mean = sum(moo_counts) / n
+
+    _mean = mean(moo_counts)
 
     # Median
     sorted_counts = sorted(moo_counts)
-    if n % 2 == 0:
-        median = (sorted_counts[n//2 - 1] + sorted_counts[n//2]) / 2
-    else:
-        median = sorted_counts[n//2]
+    _median = median(sorted_counts)
 
     # Standard deviation
-    variance = sum((x - mean) ** 2 for x in moo_counts) / n
-    std_dev = math.sqrt(variance)
+    _std_dev = stdev(moo_counts) if n > 1 else 0.0
 
     return {
-        "mean": mean,
-        "median": median,
-        "std_dev": std_dev,
+        "mean": _mean,
+        "median": _median,
+        "std_dev": _std_dev,
         "min": min(moo_counts),
         "max": max(moo_counts),
-        "range": max(moo_counts) - min(moo_counts)
+        "range": max(moo_counts) - min(moo_counts),
     }
 
 
-def analyze_coverage_efficiency(
-    moove_sequence: MooveSequence,
-    coverage_gains: list[int]
-) -> dict[str, Any]:
+def analyze_coverage_efficiency(moove_sequence: MooveSequence, coverage_gains: list[int]) -> dict[str, Any]:
     """Analyze how efficiently the sequence covers the board."""
     if not moove_sequence or not coverage_gains:
         return {
@@ -98,7 +74,7 @@ def analyze_coverage_efficiency(
             "total_coverage": 0,
             "average_coverage_per_moove": 0,
             "efficiency_ratio": 0,
-            "wasted_mooves": 0
+            "wasted_mooves": 0,
         }
 
     total_mooves = len(moove_sequence)
@@ -114,7 +90,7 @@ def analyze_coverage_efficiency(
         "average_coverage_per_moove": total_coverage / total_mooves if total_mooves > 0 else 0,
         "efficiency_ratio": total_coverage / max_possible_coverage if max_possible_coverage > 0 else 0,
         "wasted_mooves": wasted_mooves,
-        "wasted_percentage": (wasted_mooves / total_mooves * 100) if total_mooves > 0 else 0
+        "wasted_percentage": (wasted_mooves / total_mooves * 100) if total_mooves > 0 else 0,
     }
 
 
@@ -136,7 +112,7 @@ def compare_strategies(results_by_strategy: dict[str, dict]) -> dict[str, Any]:
             "statistics": stats,
             "best_score": results.get("max_score", 0),
             "worst_score": results.get("min_score", 0),
-            "consistency": 1 - (stats["std_dev"] / stats["mean"]) if stats["mean"] > 0 else 0
+            "consistency": 1 - (stats["std_dev"] / stats["mean"]) if stats["mean"] > 0 else 0,
         }
 
     # Find best strategy by different metrics
@@ -148,7 +124,7 @@ def compare_strategies(results_by_strategy: dict[str, dict]) -> dict[str, Any]:
         comparison["summary"] = {
             "best_by_max_score": best_by_max[0],
             "best_by_average": best_by_mean[0],
-            "most_consistent": most_consistent[0]
+            "most_consistent": most_consistent[0],
         }
 
     return comparison

@@ -3,10 +3,14 @@
 # cython: wraparound=False
 # cython: cdivision=True
 
+# Third Party
 import cython
 from cython.parallel import prange
-from libc.stdlib cimport malloc, free
+
+# Third Party
+from libc.stdlib cimport free, malloc
 from libc.string cimport memcpy
+
 
 cdef class CythonEngine:
     cdef public str name
@@ -210,6 +214,7 @@ cdef class CythonEngine:
         }
 
     def benchmark(self, list grid, int iterations=1000):
+        # Standard Library
         import time
 
         cdef tuple dims = self.get_grid_dimensions(grid)

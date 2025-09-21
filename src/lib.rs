@@ -278,7 +278,7 @@ impl RustEngine {
 }
 
 #[pymodule]
-fn moo_counter_rust(m: &Bound<'_, PyModule>) -> PyResult<()> {
+fn rust_engine(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<RustEngine>()?;
     Ok(())
 }

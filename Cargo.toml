@@ -1,10 +1,10 @@
 [package]
-name = "moo-counter-rust"
+name = "rust-engine"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-name = "moo_counter_rust"
+name = "rust_engine"
 crate-type = ["cdylib"]
 
 [dependencies]

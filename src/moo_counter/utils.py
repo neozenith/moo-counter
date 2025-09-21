@@ -1,10 +1,12 @@
 """Utility functions for Moo Counter."""
 
+# Standard Library
 import pathlib
 import time
-from playwright.sync_api import sync_playwright
 
-from .moo_types import Grid, VALID_SIZES
+from .moo_types import VALID_SIZES, Grid
+
+from .engines import PythonEngine
 
 
 def today_date_str() -> str:
@@ -26,13 +28,38 @@ def fetch_live_puzzle_input(size: str) -> str:
 
     url = f"https://find-a-moo.kleeut.com/plain-text?size={size}"
 
-    with sync_playwright() as p:
-        browser = p.chromium.launch()
-        page = browser.new_page()
-        page.goto(url)
-        page.wait_for_load_state("networkidle")
-        content = page.locator("body > pre").inner_text()
-        browser.close()
+    # Lazy import to avoid module-level failure if playwright/greenlet is broken
+    try:
+        # Third Party
+        from playwright.sync_api import sync_playwright
+
+        with sync_playwright() as p:
+            browser = p.chromium.launch()
+            page = browser.new_page()
+            page.goto(url)
+            page.wait_for_load_state("networkidle")
+            content = page.locator("body > pre").inner_text()
+            browser.close()
+    except ImportError as e:
+        # Fallback to using requests or httpx if playwright is broken
+        try:
+            # Third Party
+            import httpx
+
+            response = httpx.get(url)
+            # Extract text content from HTML - look for the pre tag
+            # Standard Library
+            import re
+
+            match = re.search(r"<pre>(.*?)</pre>", response.text, re.DOTALL)
+            if match:
+                content = match.group(1)
+            else:
+                raise RuntimeError(f"Could not extract puzzle content from {url}")
+        except ImportError as ie:
+            raise RuntimeError(
+                f"Neither playwright nor httpx is available. Cannot fetch live puzzles. Error: {e}"
+            ) from ie
 
     return content.replace(" ", "")
 
@@ -63,11 +90,8 @@ def grid_from_file(path: pathlib.Path) -> Grid:
     if not path.exists():
         raise FileNotFoundError(f"Puzzle file not found: {path}")
 
-    with open(path, "r") as f:
-        lines = f.readlines()
-
     grid = []
-    for line in lines:
+    for line in path.read_text().splitlines():
         row = list(line.strip())
         grid.append(row)
 
@@ -111,8 +135,7 @@ def get_output_filename(puzzle_path: str | pathlib.Path, output_dir: pathlib.Pat
     output_dir.mkdir(exist_ok=True, parents=True)
 
     if isinstance(puzzle_path, str) and puzzle_path in VALID_SIZES:
-        # Live puzzle
-        from .engine import PythonEngine
+
         engine = PythonEngine()
         grid, _ = grid_from_live(puzzle_path)
         dims = engine.get_grid_dimensions(grid)
@@ -151,6 +174,7 @@ def calculate_permutation_space(n: int) -> str:
     Returns:
         Human-readable string describing the permutation space
     """
+    # Standard Library
     import math
 
     factorial = math.factorial(n)
