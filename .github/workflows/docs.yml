@@ -13,8 +13,8 @@ on:
     paths:
       - 'docs/**'
       - '.github/workflows/docs.yml'
-  schedule:
-    - cron: '0 18 * * *'  # Runs daily at 18:00 UTC // 04:00 AEST
+  # schedule:
+  #   - cron: '0 18 * * *'  # Runs daily at 18:00 UTC // 04:00 AEST
   workflow_dispatch:  # Allows manual triggering of the workflow
 
 env:
